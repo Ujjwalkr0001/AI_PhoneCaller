@@ -8,7 +8,11 @@ loadEnvLocal({ path: '.env.local', override: true });
 import type { CallSession } from '../src/state/call-session.js';
 import { sendPostCallFollowUp } from '../src/services/whatsapp.js';
 
-const phone = process.argv[2] ?? '+917548999341';
+const phone = process.argv[2];
+if (!phone) {
+  console.error('Usage: tsx scripts/test-post-call.ts <to-e164>');
+  process.exit(1);
+}
 
 const session: CallSession = {
   callSid: 'CA-diagnostic',

@@ -15,10 +15,15 @@ import 'dotenv/config';
 import { config as loadEnvLocal } from 'dotenv';
 loadEnvLocal({ path: '.env.local', override: true });
 
-const to = process.argv[2] ?? '+917548999341';
+const to = process.argv[2];
 const mode = process.argv[3] === 'text' ? 'text' : 'template';
 
 async function main() {
+  if (!to) {
+    console.error('Usage: tsx scripts/test-whatsapp.ts <to-e164> [text|template]');
+    process.exit(1);
+  }
+
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID!;
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN!;
   const toDigits = to.replace(/^\+/, '');
