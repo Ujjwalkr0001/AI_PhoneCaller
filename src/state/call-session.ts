@@ -1,0 +1,77 @@
+export type Intent = 'hot' | 'warm' | 'cold' | 'unknown';
+
+export type CallStatus = 'ringing' | 'in-progress' | 'completed' | 'no-answer' | 'busy' | 'failed';
+
+export interface TranscriptEntry {
+  role: 'caller' | 'agent';
+  text: string;
+  at: string;
+}
+
+export interface CallbackInfo {
+  requested: boolean;
+  rawPhrase?: string;
+  confirmedAt?: string;
+  workflowStarted?: boolean;
+}
+
+export interface Qualification {
+  businessType?: string;
+  productCount?: number;
+  budget?: number;
+  timeline?: string;
+  features: string[];
+  objections: string[];
+}
+
+export interface CallSession {
+  callSid: string;
+  streamSid?: string;
+  phone: string;
+  language: 'en' | 'hi' | 'te' | 'mixed' | 'unknown';
+  status: CallStatus;
+  qualification: Qualification;
+  intent: Intent;
+  callback: CallbackInfo;
+  transcript: TranscriptEntry[];
+  whatsappFollowUpSent: boolean;
+  callStartedAt: string;
+}
+
+const sessions = new Map<string, CallSession>();
+
+export function createSession(callSid: string, phone: string): CallSession {
+  const session: CallSession = {
+    callSid,
+    phone,
+    language: 'unknown',
+    status: 'ringing',
+    qualification: { features: [], objections: [] },
+    intent: 'unknown',
+    callback: { requested: false },
+    transcript: [],
+    whatsappFollowUpSent: false,
+    callStartedAt: new Date().toISOString(),
+  };
+  sessions.set(callSid, session);
+  return session;
+}
+
+export function getSession(callSid: string): CallSession | undefined {
+  return sessions.get(callSid);
+}
+
+export function getSessionByStreamSid(streamSid: string): CallSession | undefined {
+  for (const session of sessions.values()) {
+    if (session.streamSid === streamSid) return session;
+  }
+  return undefined;
+}
+
+export function deleteSession(callSid: string): void {
+  sessions.delete(callSid);
+}
+
+export function appendTranscript(session: CallSession, role: TranscriptEntry['role'], text: string): void {
+  session.transcript.push({ role, text, at: new Date().toISOString() });
+}
