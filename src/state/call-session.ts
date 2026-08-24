@@ -73,5 +73,5 @@ export function deleteSession(callSid: string): void {
 }
 
 export function appendTranscript(session: CallSession, role: TranscriptEntry['role'], text: string): void {
-  session.transcript.push({ role, text, at: new Date().toISOString() });
+  session.transcript.push({ role, text, at: new Date().toISOString() });;;;
 }
