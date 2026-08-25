@@ -5,7 +5,14 @@ import { getSession } from '../src/state/call-session.js';
 import { logger } from '../src/utils/logger.js';
 import { attachRealtimeBridge, detachRealtimeBridge, getBridge } from '../src/realtime/session.js';
 
-const server = http.createServer();
+// Vercel cold-starts this function on the first call after idle, which is
+// where several seconds of the "silence at call start" comes from — an
+// external uptime pinger hitting this plain-HTTP path every few minutes
+// keeps a warm instance around so Twilio's WS upgrade never has to wait
+// through a cold start.
+const server = http.createServer((_req, res) => {
+  res.writeHead(200).end('ok');
+});
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws: WebSocket) => {

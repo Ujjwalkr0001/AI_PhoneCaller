@@ -94,7 +94,17 @@ export class RealtimeClient {
         audio: {
           input: {
             format: { type: 'audio/pcmu' },
-            turn_detection: { type: 'server_vad' },
+            // Noise suppression does the work of rejecting caller-side background
+            // noise, so turn_detection can stay close to stock sensitivity — that
+            // keeps real speech registering (and barge-in firing) near-instantly,
+            // instead of raising the threshold and dulling genuine interruptions.
+            noise_reduction: { type: process.env.OPENAI_NOISE_REDUCTION_MODE ?? 'near_field' },
+            turn_detection: {
+              type: 'server_vad',
+              threshold: Number(process.env.OPENAI_VAD_THRESHOLD ?? 0.5),
+              prefix_padding_ms: Number(process.env.OPENAI_VAD_PREFIX_PADDING_MS ?? 300),
+              silence_duration_ms: Number(process.env.OPENAI_VAD_SILENCE_MS ?? 250),
+            },
             transcription: { model: 'whisper-1' },
           },
           output: {
