@@ -73,9 +73,18 @@ export class SonioxClient {
           audio_format: 'mulaw',
           sample_rate: 8000,
           num_channels: 1,
-          language_hints: ['en', 'hi', 'te'],
+          language_hints: ['en', 'hi', 'te', 'ta'],
           enable_language_identification: true,
           enable_endpoint_detection: true,
+          // Default is 2000ms of silence before a turn is considered over —
+          // that alone was most of the "long pause before she answers" feel.
+          // Was pushed down to 500ms for snappier replies, but real calls
+          // showed that's too short: a caller pausing mid-sentence to think
+          // ("I have a bakery shop, so I want to list the cakes— / Over
+          // there.") gets cut into multiple separate "final" turns, and the
+          // agent replies to each fragment as if it were the whole answer —
+          // reading as the agent not listening / talking over itself.
+          max_endpoint_delay_ms: Number(process.env.SONIOX_ENDPOINT_DELAY_MS ?? 800),
         });
         this.log.info('Connected to Soniox');
         resolve();

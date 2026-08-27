@@ -2,9 +2,7 @@
 // CLI login). Wires the exact same api/*.ts handler files into a plain Node
 // http.Server, so nothing about the application code differs from what
 // actually deploys to Vercel; this file is dev-only and never deployed.
-import 'dotenv/config';
-import { config as loadEnvLocal } from 'dotenv';
-loadEnvLocal({ path: '.env.local', override: true });
+import './load-env.js';
 
 import http from 'node:http';
 import { URL } from 'node:url';
@@ -18,6 +16,8 @@ const STATIC_CONTENT_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
 };
 
 function serveStaticFile(pathname: string, res: http.ServerResponse): boolean {

@@ -15,6 +15,8 @@ export interface CallbackInfo {
   workflowStarted?: boolean;
 }
 
+export type CallType = 'sales' | 'support' | 'unknown';
+
 export interface Qualification {
   businessType?: string;
   productCount?: number;
@@ -30,6 +32,8 @@ export interface CallSession {
   phone: string;
   language: 'en' | 'hi' | 'te' | 'mixed' | 'unknown';
   status: CallStatus;
+  callType: CallType;
+  supportIssue?: string;
   qualification: Qualification;
   intent: Intent;
   callback: CallbackInfo;
@@ -46,6 +50,7 @@ export function createSession(callSid: string, phone: string): CallSession {
     phone,
     language: 'unknown',
     status: 'ringing',
+    callType: 'unknown',
     qualification: { features: [], objections: [] },
     intent: 'unknown',
     callback: { requested: false },

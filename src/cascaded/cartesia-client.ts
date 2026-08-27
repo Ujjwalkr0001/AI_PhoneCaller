@@ -5,9 +5,12 @@ type AudioChunkHandler = (contextId: string, audioBase64: string) => void;
 type ContextDoneHandler = (contextId: string) => void;
 type CloseHandler = (code: number) => void;
 
-const DEFAULT_VOICE_ID = '47c38ca4-5f35-497b-b1a3-415245fb35e1'; // Daniel — natively lists Hindi + Telugu accents alongside English
+// Sindhu — native Hindi/Telugu/Tamil voice with no English-native accent to
+// fight against, so cross-lingual English comes out Indian-accented rather
+// than American. Female voices test better for outbound sales calls here.
+export const DEFAULT_VOICE_ID = '07bc462a-c644-49f1-baf7-82d5599131be'; // Sindhu — Conversational Partner
 
-function voiceIdForLanguage(language: string): string {
+export function voiceIdForLanguage(language: string): string {
   const overrideKey = `CARTESIA_VOICE_ID_${language.toUpperCase()}`;
   return process.env[overrideKey] || process.env.CARTESIA_VOICE_ID || DEFAULT_VOICE_ID;
 }

@@ -5,6 +5,8 @@ import { scheduleCallback } from '../services/callback.js';
 import { logger } from '../utils/logger.js';
 
 export interface CaptureQualificationArgs {
+  callType?: 'sales' | 'support';
+  supportIssue?: string;
   businessType?: string;
   productCount?: number;
   budget?: number;
@@ -14,11 +16,32 @@ export interface CaptureQualificationArgs {
   intent?: Intent;
 }
 
+/** The tool schema declares budget as a number, but models occasionally send
+ * it as a numeral string (e.g. "10000000") despite that — coerce rather than
+ * silently drop it, since a dropped budget means the post-call WhatsApp
+ * recap goes out missing a fact the caller actually stated. */
+function coerceBudget(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(/[,\s]/g, ''));
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return undefined;
+}
+
 export function applyQualificationUpdate(session: CallSession, args: CaptureQualificationArgs): { intent: Intent } {
+  const log = logger.withCallSid(session.callSid);
+  if (args.callType) session.callType = args.callType;
+  if (args.supportIssue) session.supportIssue = args.supportIssue;
+
   const q = session.qualification;
   if (args.businessType) q.businessType = args.businessType;
   if (typeof args.productCount === 'number') q.productCount = args.productCount;
-  if (typeof args.budget === 'number') q.budget = args.budget;
+  if (args.budget !== undefined) {
+    const budget = coerceBudget(args.budget);
+    if (budget !== undefined) q.budget = budget;
+    else log.warn('capture_qualification: budget present but unparseable, dropped', { budget: args.budget });
+  }
   if (args.timeline) q.timeline = args.timeline;
   if (args.features?.length) q.features = Array.from(new Set([...q.features, ...args.features]));
   if (args.objections?.length) q.objections = Array.from(new Set([...q.objections, ...args.objections]));

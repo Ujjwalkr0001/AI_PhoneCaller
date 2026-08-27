@@ -21,6 +21,72 @@ const CHAT_TOOLS = TOOL_DEFINITIONS.map((tool) => ({
   function: { name: tool.name, description: tool.description, parameters: tool.parameters },
 }));
 
+// Keeps the prompt bounded on a long call — without this, `messages` grows
+// forever and every turn resends the whole call's history, so both cost and
+// latency climb turn over turn. The system message at [0] always survives.
+const MAX_HISTORY_MESSAGES = Number(process.env.DIALOGUE_MAX_HISTORY ?? 24);
+
+type DialogueProvider = 'sarvam' | 'openai';
+
+interface ProviderConfig {
+  url: string;
+  apiKey: string;
+  model: string;
+}
+
+/** Which provider handles a given turn. DIALOGUE_PROVIDER, if set to
+ * "sarvam" or "openai", forces every turn onto that one provider (for A/B
+ * testing). Left unset, it's routed per-language: Tamil turns go to Sarvam,
+ * everything else (Hindi, Telugu, English, or no hint yet — e.g. the
+ * opening greeting) goes to OpenAI. `language` is the same caller-language
+ * hint already threaded through generateReply() for the prompt context. */
+function resolveDialogueProvider(language: string | undefined): DialogueProvider {
+  const override = process.env.DIALOGUE_PROVIDER?.toLowerCase();
+  if (override === 'sarvam' || override === 'openai') return override;
+  return language === 'ta' ? 'sarvam' : 'openai';
+}
+
+/** Both Sarvam and OpenAI's chat completions endpoints are OpenAI-compatible
+ * (same request/response shape), so nothing else in streamOnce needs to
+ * change to swap providers. Tool-calling was verified directly against
+ * Sarvam's API: correct incremental tool_calls deltas, matching finish_reason,
+ * arguments parse cleanly.
+ *
+ * Model choice matters a lot here: plain "sarvam-105b" is a reasoning model
+ * that streams chain-of-thought under delta.reasoning_content before any
+ * delta.content — confirmed directly against the API to run ~2800 SSE events
+ * of pure reasoning for a one-line "say hello", with real content only
+ * arriving after. That's fine for an async chat UI but unusable for live
+ * phone dialogue (the caller hears dead air and hangs up well before it
+ * finishes). "sarvam-105b-conversations" is the non-reasoning variant —
+ * confirmed to emit real content/tool-call deltas immediately, no reasoning
+ * tokens at all — so that's the default, not the base model. */
+function providerConfig(provider: DialogueProvider): ProviderConfig {
+  if (provider === 'sarvam') {
+    const apiKey = process.env.SARVAM_API_KEY;
+    if (!apiKey) throw new Error('Missing SARVAM_API_KEY');
+    return {
+      url: 'https://api.sarvam.ai/v1/chat/completions',
+      apiKey,
+      model: process.env.SARVAM_MODEL ?? 'sarvam-105b-conversations',
+    };
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('Missing OPENAI_API_KEY');
+  return {
+    url: 'https://api.openai.com/v1/chat/completions',
+    apiKey,
+    // gpt-4o gives noticeably better instruction-following on this long a
+    // system prompt, but costs far more tokens per request than 4o-mini —
+    // on a lower OpenAI usage tier that blows through the org's TPM rate
+    // limit within a couple of turns of a real call (seen directly: "Limit
+    // 30000, Used 26266" on gpt-4o). Defaulting to mini until the org's
+    // rate-limit tier is raised; override via DIALOGUE_MODEL once it is.
+    model: process.env.DIALOGUE_MODEL ?? 'gpt-4o-mini',
+  };
+}
+
 interface StreamResult {
   toolCalls: ChatToolCall[];
   aborted: boolean;
@@ -45,18 +111,48 @@ export class DialogueClient {
     this.abortController?.abort();
   }
 
+  /** Injects a system-level nudge (e.g. "wrap up, silence timeout hit")
+   * without it being a caller line, so the next generateReply() call (with
+   * no userText, same as the opening greeting) reacts to it. */
+  pushSystemNudge(content: string): void {
+    this.messages.push({ role: 'system', content });
+  }
+
+
+  private trimHistory(): void {
+    if (this.messages.length <= MAX_HISTORY_MESSAGES + 1) return;
+    let cut = this.messages.length - MAX_HISTORY_MESSAGES;
+    // Don't let the cut boundary split a tool-call/tool-result pair — a
+    // dangling 'tool' message with no preceding assistant tool_calls message
+    // makes the Chat Completions API reject the whole request.
+    while (cut < this.messages.length && this.messages[cut].role === 'tool') cut++;
+    this.messages.splice(1, cut - 1);
+  }
+
   /** Streams raw text deltas for the assistant's next turn via onDelta as
    * they arrive, running any tool calls transparently across rounds, and
    * resolves once the turn is fully complete (or aborted via cancel()).
    * userText is omitted for the opening greeting — the agent speaks first. */
   async generateReply(onDelta: (text: string) => void, userText?: string, language?: string): Promise<void> {
+    this.trimHistory();
     if (userText) {
-      const hint = language ? ` [caller's last line was predominantly in language: ${language}]` : '';
+      // Not literally "this line's detected language" — cascaded-bridge.ts
+      // only updates this on a substantial (>=12 char) caller turn, so on a
+      // short one (a filler word, "okay", a name) it still reflects whatever
+      // language was last established, not this turn's raw transcript.
+      // Worded as the conversation's current language rather than "last
+      // line" so that doesn't read as a mismatch/error to the model.
+      const hint = language ? ` [reply in this language unless told otherwise: ${language}]` : '';
       this.messages.push({ role: 'user', content: userText + hint });
     }
 
+    // Decided once for the whole turn (including any tool-call follow-up
+    // rounds below) — not re-evaluated per round, so a turn doesn't jump
+    // providers partway through its own tool-call exchange.
+    const provider = resolveDialogueProvider(language);
+
     for (let round = 0; round < 5; round++) {
-      const { toolCalls, aborted } = await this.streamOnce(onDelta);
+      const { toolCalls, aborted } = await this.streamOnce(onDelta, provider);
       if (aborted) return;
       if (!toolCalls.length) return;
 
@@ -72,12 +168,15 @@ export class DialogueClient {
         }
         this.messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(output) });
       }
+
+      // The call is being torn down — no point spending another round-trip
+      // asking the model for a follow-up it'll never get to say.
+      if (toolCalls.some((call) => call.function.name === 'end_call')) return;
     }
   }
 
-  private async streamOnce(onDelta: (text: string) => void): Promise<StreamResult> {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error('Missing OPENAI_API_KEY');
+  private async streamOnce(onDelta: (text: string) => void, provider: DialogueProvider): Promise<StreamResult> {
+    const { url, apiKey, model } = providerConfig(provider);
 
     this.abortController = new AbortController();
     const toolCallsByIndex = new Map<number, ChatToolCall>();
@@ -85,12 +184,12 @@ export class DialogueClient {
 
     let response: Response;
     try {
-      response = await fetch('https://api.openai.com/v1/chat/completions', {
+      response = await fetch(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         signal: this.abortController.signal,
         body: JSON.stringify({
-          model: process.env.DIALOGUE_MODEL ?? 'gpt-4o-mini',
+          model,
           messages: this.messages,
           tools: CHAT_TOOLS,
           stream: true,
@@ -99,6 +198,12 @@ export class DialogueClient {
     } catch (error: any) {
       if (error?.name === 'AbortError') return { toolCalls: [], aborted: true };
       throw error;
+    }
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '<unreadable>');
+      this.log.error('Chat completions request failed', { status: response.status, body });
+      throw new Error(`Chat completions request failed: ${response.status}`);
     }
 
     if (!response.body) throw new Error('Chat completions response had no body');
@@ -155,7 +260,20 @@ export class DialogueClient {
         }
       }
     } catch (error: any) {
-      if (error?.name === 'AbortError') return { toolCalls: [], aborted: true };
+      if (error?.name === 'AbortError') {
+        // Barge-in cut this turn off — whatever was already streamed out
+        // via onDelta actually played through TTS before being canceled, so
+        // dropping it here (as this used to) erases the model's own memory
+        // of having said/asked it. The next generateReply() call then sees
+        // the caller's new line arrive right after their previous one with
+        // no assistant turn in between, and treats it as an unprompted
+        // fresh start — which is what was producing "jumps to a different
+        // question" after an interruption. Recording the partial content
+        // keeps that context intact; an in-flight tool call is incomplete
+        // and unusable, so it's dropped rather than recorded.
+        if (assistantContent) this.messages.push({ role: 'assistant', content: assistantContent });
+        return { toolCalls: [], aborted: true };
+      }
       throw error;
     }
 

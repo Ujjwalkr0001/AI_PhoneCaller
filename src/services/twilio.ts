@@ -33,3 +33,12 @@ export async function placeOutboundCall({ to, voiceWebhookUrl, statusCallbackUrl
 
   return call;
 }
+
+/** Ends an in-progress call from our side — used once the agent has said
+ * goodbye, so the call doesn't just linger open waiting for the human to
+ * hang up. Twilio's "completed" status update is how you actively end a
+ * call via the REST API (as opposed to just letting it run its course). */
+export async function hangupCall(callSid: string): Promise<void> {
+  const client = getTwilioClient();
+  await client.calls(callSid).update({ status: 'completed' });
+}

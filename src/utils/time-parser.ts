@@ -74,6 +74,7 @@ export function parseCallbackPhrase(phrase: string, referenceNow: Date): ParsedC
   const nowIst = toIstParts(referenceNow);
   let targetDay = { year: nowIst.year, month: nowIst.month, day: nowIst.day };
   let dayMatched = false;
+  let explicitToday = false;
 
   for (const { pattern, offsetDays } of DAY_KEYWORDS) {
     if (pattern.test(normalized)) {
@@ -81,6 +82,7 @@ export function parseCallbackPhrase(phrase: string, referenceNow: Date): ParsedC
       const parts = toIstParts(base);
       targetDay = { year: parts.year, month: parts.month, day: parts.day };
       dayMatched = true;
+      if (offsetDays === 0) explicitToday = true;
       break;
     }
   }
@@ -124,5 +126,18 @@ export function parseCallbackPhrase(phrase: string, referenceNow: Date): ParsedC
   }
 
   const date = istWallClockToUtc(targetDay.year, targetDay.month, targetDay.day, hour, minute);
+
+  if (date.getTime() <= referenceNow.getTime()) {
+    // No day word was matched at all (e.g. "call me in the morning" said at
+    // 7pm) — the implied day defaulted to today, but that time has already
+    // passed, so the caller almost certainly meant the next occurrence.
+    // If they explicitly said "today", though, don't guess — that's a real
+    // ambiguity worth asking about rather than silently firing a callback
+    // in the past (QStash schedules a past time immediately).
+    if (explicitToday) return undefined;
+    const rolled = istWallClockToUtc(targetDay.year, targetDay.month, targetDay.day + 1, hour, minute);
+    return { date: rolled, isExplicitTime, matchedPhrase: normalized };
+  }
+
   return { date, isExplicitTime, matchedPhrase: normalized };
 }
