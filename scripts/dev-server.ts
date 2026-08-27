@@ -9,7 +9,7 @@ import { URL } from 'node:url';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
-const PUBLIC_DIR = path.resolve(import.meta.dirname, '..', 'public');
+const PUBLIC_DIR = path.resolve(import.meta.dirname, '..', 'public');;;;;;
 
 const STATIC_CONTENT_TYPES: Record<string, string> = {
   '.pdf': 'application/pdf',
