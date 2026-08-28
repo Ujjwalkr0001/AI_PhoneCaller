@@ -19,7 +19,7 @@ function buildTranscriptMarkdown(session: CallSession): string {
   lines.push(`- **Started:** ${formatIst(session.callStartedAt)}`);
   lines.push(`- **Status:** ${session.status}`);
   lines.push(`- **Intent:** ${session.intent}`);
-  lines.push('');
+  lines.push('');;;;;
 
   lines.push('## Qualification captured');
   lines.push(`- Business type: ${q.businessType ?? '_not captured_'}`);
