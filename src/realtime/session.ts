@@ -1,28 +1,20 @@
 import type WebSocket from 'ws';
 import type { CallSession } from '../state/call-session.js';
-import { AudioBridge } from './audio-bridge.js';
 import { CascadedBridge } from '../cascaded/cascaded-bridge.js';
 import { logger } from '../utils/logger.js';
 
-type Bridge = AudioBridge | CascadedBridge;
+const bridges = new Map<string, CascadedBridge>();
 
-const bridges = new Map<string, Bridge>();
-
-/** VOICE_PIPELINE=cascaded uses Soniox (STT) + Cartesia (TTS) instead of the
- * single OpenAI Realtime session — set for comparing the two without code
- * changes; defaults to the original Realtime pipeline. */
+/** Every call runs the cascaded pipeline: Sarvam STT -> Sarvam LLM -> Sarvam TTS. */
 export function attachRealtimeBridge(session: CallSession, twilioWs: WebSocket): void {
-  const bridge: Bridge =
-    process.env.VOICE_PIPELINE === 'cascaded'
-      ? new CascadedBridge(session, twilioWs)
-      : new AudioBridge(session, twilioWs);
+  const bridge = new CascadedBridge(session, twilioWs);
   bridges.set(session.callSid, bridge);
-  bridge.start().catch((error) => {
-    logger.withCallSid(session.callSid).error('Failed to start realtime bridge', error);
+  bridge.start().catch((error: unknown) => {
+    logger.withCallSid(session.callSid).error('Failed to start call bridge', error);
   });
 }
 
-export function getBridge(callSid: string): Bridge | undefined {
+export function getBridge(callSid: string): CascadedBridge | undefined {
   return bridges.get(callSid);
 }
 

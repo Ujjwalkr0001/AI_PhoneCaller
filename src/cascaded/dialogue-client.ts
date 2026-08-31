@@ -26,31 +26,12 @@ const CHAT_TOOLS = TOOL_DEFINITIONS.map((tool) => ({
 // latency climb turn over turn. The system message at [0] always survives.
 const MAX_HISTORY_MESSAGES = Number(process.env.DIALOGUE_MAX_HISTORY ?? 24);
 
-type DialogueProvider = 'sarvam' | 'openai';
+const SARVAM_CHAT_URL = 'https://api.sarvam.ai/v1/chat/completions';
 
-interface ProviderConfig {
-  url: string;
-  apiKey: string;
-  model: string;
-}
-
-/** Which provider handles a given turn. DIALOGUE_PROVIDER, if set to
- * "sarvam" or "openai", forces every turn onto that one provider (for A/B
- * testing). Left unset, it's routed per-language: Tamil turns go to Sarvam,
- * everything else (Hindi, Telugu, English, or no hint yet — e.g. the
- * opening greeting) goes to OpenAI. `language` is the same caller-language
- * hint already threaded through generateReply() for the prompt context. */
-function resolveDialogueProvider(language: string | undefined): DialogueProvider {
-  const override = process.env.DIALOGUE_PROVIDER?.toLowerCase();
-  if (override === 'sarvam' || override === 'openai') return override;
-  return language === 'ta' ? 'sarvam' : 'openai';
-}
-
-/** Both Sarvam and OpenAI's chat completions endpoints are OpenAI-compatible
- * (same request/response shape), so nothing else in streamOnce needs to
- * change to swap providers. Tool-calling was verified directly against
- * Sarvam's API: correct incremental tool_calls deltas, matching finish_reason,
- * arguments parse cleanly.
+/** Sarvam's chat completions endpoint is OpenAI-compatible (same
+ * request/response shape). Tool-calling was verified directly against it:
+ * correct incremental tool_calls deltas, matching finish_reason, arguments
+ * parse cleanly.
  *
  * Model choice matters a lot here: plain "sarvam-105b" is a reasoning model
  * that streams chain-of-thought under delta.reasoning_content before any
@@ -61,30 +42,10 @@ function resolveDialogueProvider(language: string | undefined): DialogueProvider
  * finishes). "sarvam-105b-conversations" is the non-reasoning variant —
  * confirmed to emit real content/tool-call deltas immediately, no reasoning
  * tokens at all — so that's the default, not the base model. */
-function providerConfig(provider: DialogueProvider): ProviderConfig {
-  if (provider === 'sarvam') {
-    const apiKey = process.env.SARVAM_API_KEY;
-    if (!apiKey) throw new Error('Missing SARVAM_API_KEY');
-    return {
-      url: 'https://api.sarvam.ai/v1/chat/completions',
-      apiKey,
-      model: process.env.SARVAM_MODEL ?? 'sarvam-105b-conversations',
-    };
-  }
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('Missing OPENAI_API_KEY');
-  return {
-    url: 'https://api.openai.com/v1/chat/completions',
-    apiKey,
-    // gpt-4o gives noticeably better instruction-following on this long a
-    // system prompt, but costs far more tokens per request than 4o-mini —
-    // on a lower OpenAI usage tier that blows through the org's TPM rate
-    // limit within a couple of turns of a real call (seen directly: "Limit
-    // 30000, Used 26266" on gpt-4o). Defaulting to mini until the org's
-    // rate-limit tier is raised; override via DIALOGUE_MODEL once it is.
-    model: process.env.DIALOGUE_MODEL ?? 'gpt-4o-mini',
-  };
+function chatApiKey(): string {
+  const apiKey = process.env.SARVAM_API_KEY;
+  if (!apiKey) throw new Error('Missing SARVAM_API_KEY');
+  return apiKey;
 }
 
 interface StreamResult {
@@ -92,10 +53,9 @@ interface StreamResult {
   aborted: boolean;
 }
 
-/** Drives the actual conversation — Soniox and Cartesia are just ears and a
- * mouth; this is the brain, using plain OpenAI Chat Completions (not the
- * Realtime API) since it only needs text in, text out. Reuses the same
- * sales prompt and tool definitions as the Realtime pipeline. */
+/** Drives the actual conversation — the STT/TTS clients are just ears and a
+ * mouth; this is the brain, using Sarvam's OpenAI-compatible Chat Completions
+ * endpoint since it only needs text in, text out. */
 export class DialogueClient {
   private readonly log;
   private readonly messages: ChatMessage[];
@@ -146,13 +106,8 @@ export class DialogueClient {
       this.messages.push({ role: 'user', content: userText + hint });
     }
 
-    // Decided once for the whole turn (including any tool-call follow-up
-    // rounds below) — not re-evaluated per round, so a turn doesn't jump
-    // providers partway through its own tool-call exchange.
-    const provider = resolveDialogueProvider(language);
-
     for (let round = 0; round < 5; round++) {
-      const { toolCalls, aborted } = await this.streamOnce(onDelta, provider);
+      const { toolCalls, aborted } = await this.streamOnce(onDelta);
       if (aborted) return;
       if (!toolCalls.length) return;
 
@@ -175,21 +130,19 @@ export class DialogueClient {
     }
   }
 
-  private async streamOnce(onDelta: (text: string) => void, provider: DialogueProvider): Promise<StreamResult> {
-    const { url, apiKey, model } = providerConfig(provider);
-
+  private async streamOnce(onDelta: (text: string) => void): Promise<StreamResult> {
     this.abortController = new AbortController();
     const toolCallsByIndex = new Map<number, ChatToolCall>();
     let assistantContent = '';
 
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await fetch(SARVAM_CHAT_URL, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${chatApiKey()}`, 'Content-Type': 'application/json' },
         signal: this.abortController.signal,
         body: JSON.stringify({
-          model,
+          model: process.env.SARVAM_MODEL ?? 'sarvam-105b-conversations',
           messages: this.messages,
           tools: CHAT_TOOLS,
           stream: true,

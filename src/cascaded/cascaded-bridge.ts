@@ -1,10 +1,8 @@
 import type WebSocket from 'ws';
 import type { CallSession } from '../state/call-session.js';
 import { appendTranscript } from '../state/call-session.js';
-import { SonioxClient } from './soniox-client.js';
-import { CartesiaClient } from './cartesia-client.js';
+import { SarvamSttClient } from './sarvam-stt-client.js';
 import { SarvamTtsClient } from './sarvam-tts-client.js';
-import type { TtsEngine } from './tts-engine.js';
 import { DialogueClient } from './dialogue-client.js';
 import { RoomNoiseMixer } from './room-noise.js';
 import { MULAW_SILENCE_BYTE } from './mulaw.js';
@@ -22,7 +20,7 @@ const SILENCE_TAIL_MS = 300; // pads each turn so Twilio doesn't clip the last w
 const SENTENCE_END = /[.!?।](\s|$)/;
 const CLAUSE_BREAK = /[,](\s|$)/;
 const MAX_CHUNK_CHARS = 150;
-// Waiting for a full first sentence before Cartesia hears anything was most
+// Waiting for a full first sentence before TTS hears anything was most
 // of the "long pause, then she talks" feel — flushing a short first clause
 // gets audio started much sooner, at the cost of slightly choppier prosody
 // on just that opening fragment.
@@ -31,8 +29,8 @@ const FIRST_CHUNK_CLAUSE_MIN_CHARS = 10;
 
 /** Picks the TTS language from the actual script of the generated text
  * (Devanagari/Telugu/Tamil Unicode ranges vs Latin), rather than guessing
- * from the caller's last language — this is ground truth for what Cartesia
- * needs to render, and lets one reply code-switch sentence-by-sentence
+ * from the caller's last language — this is ground truth for what the TTS
+ * engine needs to render, and lets one reply code-switch sentence-by-sentence
  * correctly. */
 function scriptLanguage(text: string): 'hi' | 'te' | 'ta' | 'en' {
   const counts: Record<'hi' | 'te' | 'ta', number> = {
@@ -44,27 +42,14 @@ function scriptLanguage(text: string): 'hi' | 'te' | 'ta' | 'en' {
   return count > 0 ? best : 'en';
 }
 
-/** Cascaded alternative to AudioBridge: Soniox (STT) -> DialogueClient (LLM)
- * -> Cartesia (TTS), instead of one integrated OpenAI Realtime session.
- * Twilio's native 8kHz mulaw is fed to Soniox and produced by Cartesia
- * directly, so no resampling is needed anywhere in this bridge. */
-/** TTS_PROVIDER, if set to "sarvam" or "cartesia", forces every chunk onto
- * that one engine (for A/B testing). Left unset, it's routed per-chunk by
- * the actual script of the text about to be spoken: Tamil goes to Sarvam,
- * everything else (Hindi, Telugu, English) goes to Cartesia. This mirrors
- * resolveDialogueProvider() in dialogue-client.ts, but keyed off
- * scriptLanguage() (the literal text being spoken) rather than the caller's
- * detected language, since that's the existing, correct signal for TTS. */
-function resolveTtsProvider(language: string): 'sarvam' | 'cartesia' {
-  const override = process.env.TTS_PROVIDER?.toLowerCase();
-  if (override === 'sarvam' || override === 'cartesia') return override;
-  return language === 'ta' ? 'sarvam' : 'cartesia';
-}
-
+/** Cascaded pipeline: Sarvam STT -> DialogueClient (Sarvam LLM) -> Sarvam TTS,
+ * chained together turn by turn instead of one integrated realtime session.
+ * Twilio's native 8kHz mulaw is fed straight to the STT client (which
+ * decodes it internally) and produced by the TTS client directly, so no
+ * resampling happens in this file. */
 export class CascadedBridge {
-  private readonly soniox: SonioxClient;
-  private readonly ttsCartesia: TtsEngine;
-  private readonly ttsSarvam: TtsEngine;
+  private readonly stt: SarvamSttClient;
+  private readonly tts: SarvamTtsClient;
   private readonly dialogue: DialogueClient;
   private readonly roomNoise = new RoomNoiseMixer();
   private readonly log;
@@ -72,12 +57,6 @@ export class CascadedBridge {
   private closed = false;
   private speaking = false;
   private currentContextId: string | undefined;
-  // Whichever engine most recently had speak() called for the still-current
-  // context — the one handleBargeIn() must cancel. A turn can in principle
-  // code-switch across engines mid-turn (Tamil sentence then Hindi
-  // sentence); only the latest one is worth canceling — anything earlier
-  // has either already finished or has nothing left in flight to stop.
-  private activeTts: TtsEngine | undefined;
   // True once the current turn has actually sent its TTS engine a first
   // chunk. Before that, the engine has no context to cancel — telling it to
   // cancel one it never heard of is what was producing "Invalid context ID"
@@ -87,6 +66,13 @@ export class CascadedBridge {
   private turnHasAudio = false;
   private sentenceBuffer = '';
   private turnCounter = 0;
+
+  // Timestamp of the caller's last final turn — logged against the first
+  // TTS audio chunk that comes back for it, purely so a slow reply shows up
+  // as a concrete number in the logs instead of a guess. undefined on the
+  // greeting turn (nothing to measure "reply latency" against).
+  private turnStartedAt: number | undefined;
+  private firstAudioLogged = false;
 
   // Language actually established for replies, plus a pending challenger and
   // Language actually established for replies — see resolveLanguageHint().
@@ -101,39 +87,27 @@ export class CascadedBridge {
 
   constructor(private readonly session: CallSession, private readonly twilioWs: WebSocket) {
     this.log = logger.withCallSid(session.callSid);
-    this.soniox = new SonioxClient(session.callSid);
-    this.ttsCartesia = new CartesiaClient(session.callSid);
-    this.ttsSarvam = new SarvamTtsClient(session.callSid);
+    this.stt = new SarvamSttClient(session.callSid);
+    this.tts = new SarvamTtsClient(session.callSid);
     this.dialogue = new DialogueClient(session);
   }
 
   async start(): Promise<void> {
     this.wireClients();
-    // Don't serialize the WS handshakes in front of the greeting — Soniox
-    // only needs to be ready by the time the caller might speak (well after
-    // the greeting starts streaming), and Cartesia only needs to be ready by
-    // the time the greeting's first flushed chunk is ready to speak. Both
-    // engines connect eagerly since either could end up handling a later
-    // turn depending on its language, but the greeting itself is always
-    // English, so it only ever waits on Cartesia — gating it on Sarvam too
-    // was adding several extra seconds of dead air before the caller heard
-    // anything, for a connection the greeting was never going to use.
-    const sonioxConnect = this.soniox.connect().catch((error) => {
-      this.log.error('Soniox connect failed', error);
+    // Don't serialize the WS handshakes in front of the greeting — STT only
+    // needs to be ready by the time the caller might speak (well after the
+    // greeting starts streaming), while TTS needs to be ready by the time
+    // the greeting's first flushed chunk is ready to speak.
+    const sttConnect = this.stt.connect().catch((error) => {
+      this.log.error('Sarvam STT connect failed', error);
     });
-    const cartesiaConnect = this.ttsCartesia.connect().catch((error) => {
-      this.log.error('Cartesia connect failed', error);
+    const ttsConnect = this.tts.connect().catch((error) => {
+      this.log.error('Sarvam TTS connect failed', error);
     });
-    // Sarvam is NOT connected eagerly here — per-language routing means most
-    // calls (English/Hindi/Telugu) never touch it, and an eager connection
-    // just sits idle until Sarvam's server times it out around 60s in,
-    // logging a spurious "TTS connection lost mid-call" error. Connected
-    // lazily instead, the first time a Tamil-scripted chunk actually needs
-    // it (see flush() below).
 
     // Outbound sales call: the agent greets the caller proactively.
-    await this.speakTurn(undefined, undefined, cartesiaConnect);
-    await sonioxConnect;
+    await this.speakTurn(undefined, undefined, ttsConnect);
+    await sttConnect;
 
     this.armDurationGuard();
     this.armIdleTimer();
@@ -206,55 +180,56 @@ export class CascadedBridge {
   }
 
   private wireClients(): void {
-    this.soniox.onFinalTurn((transcript, language) => {
+    this.stt.onFinalTurn((transcript, language) => {
       appendTranscript(this.session, 'caller', transcript);
       const languageHint = this.resolveLanguageHint(transcript, language);
       if (!this.ending) this.armIdleTimer(); // caller spoke — reset the silence clock
+      this.turnStartedAt = Date.now();
+      this.firstAudioLogged = false;
       void this.speakTurn(transcript, languageHint).catch((error) =>
         this.log.error('Turn processing failed', error)
       );
     });
-    this.soniox.onActivity(() => this.handleBargeIn());
-    this.soniox.onClose(() => {
-      if (!this.closed) this.log.error('Soniox connection lost mid-call');
+    this.stt.onActivity(() => this.handleBargeIn());
+    this.stt.onClose(() => {
+      if (!this.closed) this.log.error('Sarvam STT connection lost mid-call');
     });
 
-    for (const engine of [this.ttsCartesia, this.ttsSarvam]) {
-      // Both engines share the same handlers — whichever one is actually
-      // producing audio for the current context is the one whose contextId
-      // matches below; the idle engine's calls just no-op on that check.
-      engine.onAudioChunk((contextId, audioBase64) => {
-        if (contextId !== this.currentContextId || !this.session.streamSid) return;
-        const noisy = this.roomNoise.mixIntoMulaw(Buffer.from(audioBase64, 'base64'));
-        this.twilioWs.send(outboundMediaMessage(this.session.streamSid, noisy.toString('base64')));
-      });
-      engine.onContextDone((contextId) => {
-        // Only pad on a turn that actually finished on its own — a barge-in
-        // already cleared Twilio's buffer and moved currentContextId on, so
-        // this stale onContextDone for the old context must not re-open audio.
-        if (contextId !== this.currentContextId) return;
-        this.sendSilenceTail();
-        this.speaking = false;
-      });
-      engine.onClose(() => {
-        if (!this.closed) this.log.error('TTS connection lost mid-call');
-      });
-    }
+    this.tts.onAudioChunk((contextId, audioBase64) => {
+      if (contextId !== this.currentContextId || !this.session.streamSid) return;
+      if (!this.firstAudioLogged) {
+        this.firstAudioLogged = true;
+        if (this.turnStartedAt) this.log.info('Turn latency', { msToFirstAudio: Date.now() - this.turnStartedAt });
+      }
+      const noisy = this.roomNoise.mixIntoMulaw(Buffer.from(audioBase64, 'base64'));
+      this.twilioWs.send(outboundMediaMessage(this.session.streamSid, noisy.toString('base64')));
+    });
+    this.tts.onContextDone((contextId) => {
+      // Only pad on a turn that actually finished on its own — a barge-in
+      // already cleared Twilio's buffer and moved currentContextId on, so
+      // this stale onContextDone for the old context must not re-open audio.
+      if (contextId !== this.currentContextId) return;
+      this.sendSilenceTail();
+      this.speaking = false;
+    });
+    this.tts.onClose(() => {
+      if (!this.closed) this.log.error('Sarvam TTS connection lost mid-call');
+    });
   }
 
   handleTwilioMedia(evt: TwilioMediaEvent): void {
-    this.soniox.sendAudio(Buffer.from(evt.media.payload, 'base64'));
+    this.stt.sendAudio(Buffer.from(evt.media.payload, 'base64'));
   }
 
   handleTwilioMark(_evt: TwilioMarkEvent): void {
-    // No mark-based playback tracking needed — Cartesia's context lifecycle
+    // No mark-based playback tracking needed — the TTS context lifecycle
     // (onContextDone) already tells us when the assistant has finished.
   }
 
   private handleBargeIn(): void {
     if (!this.speaking || !this.currentContextId) return;
 
-    if (this.turnHasAudio) this.activeTts?.cancelContext(this.currentContextId);
+    if (this.turnHasAudio) this.tts.cancelContext(this.currentContextId);
     this.dialogue.cancel();
     if (this.session.streamSid) this.twilioWs.send(outboundClearMessage(this.session.streamSid));
 
@@ -298,17 +273,15 @@ export class CascadedBridge {
         try {
           if (contextId !== this.currentContextId) return; // canceled while waiting to connect
           const language = scriptLanguage(text);
-          const useSarvam = resolveTtsProvider(language) === 'sarvam';
-          const engine = useSarvam ? this.ttsSarvam : this.ttsCartesia;
-          // Sarvam connects lazily (see start()) — only await/establish it
-          // here, on the turn that actually needs it, instead of on every call.
-          if (useSarvam) {
-            await engine.connect();
-            if (contextId !== this.currentContextId) return; // canceled while connecting
-          }
+          // Always (re)await connect() here, not just on the greeting turn —
+          // a barge-in's cancelContext() drops the whole Sarvam socket and
+          // reconnects in the background (see sarvam-tts-client.ts), and this
+          // is what catches that in-flight reconnect instead of racing it and
+          // silently dropping the next turn's audio.
+          await this.tts.connect();
+          if (contextId !== this.currentContextId) return; // canceled while connecting
           this.turnHasAudio = true;
-          this.activeTts = engine;
-          engine.speak(contextId, text, { language, continue: !isFinal });
+          this.tts.speak(contextId, text, { language, continue: !isFinal });
         } catch (error) {
           this.log.error('TTS speak failed', error);
         }
@@ -348,8 +321,7 @@ export class CascadedBridge {
     this.closed = true;
     clearTimeout(this.durationTimer);
     clearTimeout(this.idleTimer);
-    this.soniox.close();
-    this.ttsCartesia.close();
-    this.ttsSarvam.close();
+    this.stt.close();
+    this.tts.close();
   }
 }

@@ -24,7 +24,7 @@ function loadNoiseLoop(): Buffer | undefined {
 
 /** Mixes a very low-level noise floor into outbound TTS audio so it sounds
  * like a call placed from an ordinary room rather than a silent studio
- * recording. Cartesia's API has no built-in ambience option, so this
+ * recording. Sarvam's TTS API has no built-in ambience option, so this
  * decodes each mulaw sample, adds noise, and re-encodes. Keeps state across
  * chunks (one instance per call) so the noise doesn't click or reset
  * between sentences.

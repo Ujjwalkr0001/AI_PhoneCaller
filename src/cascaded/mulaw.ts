@@ -1,7 +1,7 @@
-// Standard G.711 mu-law codec (the format Twilio Media Streams and Cartesia's
-// "pcm_mulaw" output both use) — needed here only to decode to linear PCM,
-// mix in room noise, and re-encode, since neither Twilio nor Cartesia speak
-// linear PCM directly.
+// Standard G.711 mu-law codec — Twilio Media Streams' native wire format,
+// also Sarvam TTS's output format. Needed here to decode to linear PCM (to
+// mix in room noise, or to feed Sarvam's STT, which has no mu-law input
+// option) and re-encode back to mu-law for Twilio.
 
 export function mulawToLinearSample(muByteIn: number): number {
   const muByte = ~muByteIn & 0xff;
@@ -41,3 +41,44 @@ export function linearToMulawSample(sampleIn: number): number {
  * decodes to a near-full-scale sample. Padding with 0x00 produces an
  * audible click instead of quiet. */
 export const MULAW_SILENCE_BYTE = linearToMulawSample(0);
+
+/** Decodes a buffer of 8kHz mu-law samples (Twilio's native wire format) to
+ * 16-bit little-endian linear PCM — the format Sarvam's STT streaming API
+ * requires (it has no mu-law input option, unlike Soniox). */
+export function mulawToPcm16le(mulaw: Buffer): Buffer {
+  const pcm = Buffer.alloc(mulaw.length * 2);
+  for (let i = 0; i < mulaw.length; i++) {
+    pcm.writeInt16LE(mulawToLinearSample(mulaw[i]), i * 2);
+  }
+  return pcm;
+}
+
+/** Wraps raw 16-bit mono PCM in a minimal 44-byte WAV (RIFF) header. Sarvam's
+ * STT streaming API validates each message's audio.encoding strictly against
+ * "audio/wav" (confirmed directly against the API — "pcm_s16le" is rejected
+ * outright as an invalid enum value, even though it's an accepted
+ * input_audio_codec at connect time), so every audio chunk sent over the
+ * socket needs its own self-contained WAV container, not just a codec label. */
+export function pcm16ToWav(pcm: Buffer, sampleRate: number): Buffer {
+  const numChannels = 1;
+  const bitsPerSample = 16;
+  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
+  const blockAlign = (numChannels * bitsPerSample) / 8;
+
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16); // fmt chunk size for PCM
+  header.writeUInt16LE(1, 20); // audio format 1 = PCM
+  header.writeUInt16LE(numChannels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(pcm.length, 40);
+
+  return Buffer.concat([header, pcm]);
+}

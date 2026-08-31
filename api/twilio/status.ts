@@ -13,6 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const callSid = typeof req.body?.CallSid === 'string' ? req.body.CallSid : undefined;
   const callStatus = typeof req.body?.CallStatus === 'string' ? req.body.CallStatus : undefined;
+  const callDuration = typeof req.body?.CallDuration === 'string' ? Number(req.body.CallDuration) : undefined;
   const log = logger.withCallSid(callSid ?? 'unknown');
 
   if (!callSid || !callStatus) {
@@ -30,8 +31,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  if (callStatus === 'completed') {
+  if (callStatus === 'in-progress') {
+    session.status = 'in-progress';
+    session.answeredAt ??= new Date().toISOString();
+  } else if (callStatus === 'completed') {
     session.status = 'completed';
+    session.callEndedAt = new Date().toISOString();
+    if (callDuration !== undefined && !Number.isNaN(callDuration)) session.durationSeconds = callDuration;
     try {
       await runPostCallFollowUp(session);
     } catch (error) {
@@ -39,8 +45,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   } else if (callStatus === 'no-answer' || callStatus === 'busy' || callStatus === 'failed') {
     session.status = callStatus;
+    session.callEndedAt = new Date().toISOString();
     log.info('Call ended without connecting', { callStatus });
   } else if (TERMINAL_STATUSES.has(callStatus)) {
+    session.callEndedAt = new Date().toISOString();
     log.info('Call reached terminal status', { callStatus });
   }
 

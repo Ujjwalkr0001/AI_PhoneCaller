@@ -1,8 +1,14 @@
-import type { RealtimeToolDefinition } from './realtime-client.js';
 import type { CallSession } from '../state/call-session.js';
 import { applyQualificationUpdate, applyScheduleCallback } from '../agent/sales-agent.js';
 import { hangupCall } from '../services/twilio.js';
 import { logger } from '../utils/logger.js';
+
+export interface RealtimeToolDefinition {
+  type: 'function';
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
 
 export const TOOL_DEFINITIONS: RealtimeToolDefinition[] = [
   {

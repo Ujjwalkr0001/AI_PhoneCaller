@@ -18,10 +18,13 @@ const STATIC_CONTENT_TYPES: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'application/javascript',
 };
 
 function serveStaticFile(pathname: string, res: http.ServerResponse): boolean {
-  const filePath = path.join(PUBLIC_DIR, pathname);
+  const filePath = path.join(PUBLIC_DIR, pathname === '/' ? '/index.html' : pathname);
   // Reject traversal outside PUBLIC_DIR (e.g. "/../.env.local").
   if (!filePath.startsWith(PUBLIC_DIR) || !existsSync(filePath) || !statSync(filePath).isFile()) {
     return false;
@@ -35,6 +38,10 @@ function serveStaticFile(pathname: string, res: http.ServerResponse): boolean {
 }
 
 import startHandler from '../api/call/start.js';
+import triggerHandler from '../api/call/trigger.js';
+import callStatusHandler from '../api/call/status.js';
+import callListHandler from '../api/call/list.js';
+import configHandler from '../api/config.js';
 import voiceHandler from '../api/twilio/voice.js';
 import statusHandler from '../api/twilio/status.js';
 import whatsappHandler from '../api/twilio/whatsapp.js';
@@ -112,6 +119,10 @@ const server = http.createServer(async (req, res) => {
     const { vReq, vRes } = attachVercelHelpers(req, res, url, body);
 
     if (url.pathname === '/api/call/start') return await startHandler(vReq, vRes);
+    if (url.pathname === '/api/call/trigger') return await triggerHandler(vReq, vRes);
+    if (url.pathname === '/api/call/status') return await callStatusHandler(vReq, vRes);
+    if (url.pathname === '/api/call/list') return await callListHandler(vReq, vRes);
+    if (url.pathname === '/api/config') return await configHandler(vReq, vRes);
     if (url.pathname === '/api/twilio/voice') return await voiceHandler(vReq, vRes);
     if (url.pathname === '/api/twilio/status') return await statusHandler(vReq, vRes);
     if (url.pathname === '/api/twilio/whatsapp') return await whatsappHandler(vReq, vRes);

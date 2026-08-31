@@ -1,11 +1,14 @@
 import { SarvamAIClient } from 'sarvamai';
 import type { SarvamAI } from 'sarvamai';
 import { logger } from '../utils/logger.js';
-import type { AudioChunkHandler, ContextDoneHandler, CloseHandler, TtsEngine } from './tts-engine.js';
 
 // Not exported as a named type from the package's public surface — derived
 // structurally from the connect() method's own return type instead.
 type TtsSocket = Awaited<ReturnType<SarvamAIClient['textToSpeechStreaming']['connect']>>;
+
+type AudioChunkHandler = (contextId: string, audioBase64: string) => void;
+type ContextDoneHandler = (contextId: string) => void;
+type CloseHandler = (code: number) => void;
 
 // bulbul:v3 default voice — sounds natural across all 11 supported
 // languages (incl. hi-IN/ta-IN/te-IN/en-IN), not tuned per-language here
@@ -23,16 +26,13 @@ function languageCodeFor(language: string): string {
   return LANGUAGE_CODES[language] ?? 'en-IN';
 }
 
-/** Cascaded-pipeline TTS engine backed by Sarvam's Bulbul streaming API —
- * interface-compatible with CartesiaClient (see tts-engine.ts) so
- * CascadedBridge can drive either one without knowing which is active.
+/** Cascaded-pipeline TTS engine backed by Sarvam's Bulbul streaming API.
  *
- * Sarvam's WS protocol has no Cartesia-style multiplexed "context" per
- * connection, and no cancel message: one connection carries one turn's text
- * at a time. So unlike Cartesia (single persistent connection, cancel by
- * context id), barge-in here means dropping the connection outright and
- * reconnecting for the next turn — see cancelContext(). */
-export class SarvamTtsClient implements TtsEngine {
+ * Sarvam's WS protocol has no multiplexed "context" per connection, and no
+ * cancel message: one connection carries one turn's text at a time. So
+ * barge-in here means dropping the connection outright and reconnecting for
+ * the next turn — see cancelContext(). */
+export class SarvamTtsClient {
   private readonly client: SarvamAIClient;
   private readonly log;
   private socket: TtsSocket | undefined;
@@ -145,7 +145,17 @@ export class SarvamTtsClient implements TtsEngine {
       this.configuredLanguage = languageCode;
     }
 
-    this.socket.convert(transcript);
+    // Sarvam's convert() rejects a transcript with no letters at all (e.g. a
+    // chunk that's purely digits/punctuation, like a bare number or a stray
+    // trailing "." on its own) with a fatal 422 that drops the whole socket
+    // — confirmed directly against the API. Skip just that chunk's text
+    // instead of losing the connection for the rest of the call; still
+    // flush() on the final chunk so the turn closes out normally.
+    if (/\p{L}/u.test(transcript)) {
+      this.socket.convert(transcript);
+    } else {
+      this.log.warn('Skipping Sarvam TTS for a chunk with no letters', { transcript });
+    }
     if (!opts.continue) this.socket.flush();
   }
 

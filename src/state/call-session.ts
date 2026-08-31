@@ -40,6 +40,9 @@ export interface CallSession {
   transcript: TranscriptEntry[];
   whatsappFollowUpSent: boolean;
   callStartedAt: string;
+  answeredAt?: string;
+  callEndedAt?: string;
+  durationSeconds?: number;
 }
 
 const sessions = new Map<string, CallSession>();
@@ -71,6 +74,11 @@ export function getSessionByStreamSid(streamSid: string): CallSession | undefine
     if (session.streamSid === streamSid) return session;
   }
   return undefined;
+}
+
+/** Most recently started calls first — backs the frontend's call history list. */
+export function getAllSessions(): CallSession[] {
+  return Array.from(sessions.values()).sort((a, b) => b.callStartedAt.localeCompare(a.callStartedAt));
 }
 
 export function deleteSession(callSid: string): void {

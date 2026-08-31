@@ -1,5 +1,4 @@
 import type { CallSession } from '../state/call-session.js';
-import { deleteSession } from '../state/call-session.js';
 import { logger } from '../utils/logger.js';
 import { scheduleFutureCall } from './qstash.js';
 import { sendPostCallFollowUp } from './whatsapp.js';
@@ -33,7 +32,8 @@ export async function runPostCallFollowUp(session: CallSession): Promise<void> {
     await sendPostCallFollowUp(session);
   } catch (error) {
     log.error('Post-call follow-up failed', error);
-  } finally {
-    deleteSession(session.callSid);
   }
+  // Session is deliberately kept in memory (not deleted) after this point —
+  // the frontend dashboard's call history and transcript views read it via
+  // /api/call/status and /api/call/list. It only goes away on process restart.
 }
