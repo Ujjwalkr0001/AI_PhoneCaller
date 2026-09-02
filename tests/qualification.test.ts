@@ -8,7 +8,7 @@ function q(overrides: Partial<Qualification>): Qualification {
 
 describe('scoreLead', () => {
   it('classifies strong budget + urgent timeline as hot', () => {
-    expect(scoreLead(q({ budget: 200000, timeline: 'within three weeks' }))).toBe('hot');
+    expect(scoreLead(q({ budget: 200000, timeline: 'within three weeks' }))).toBe('hot');;
   });
 
   it('classifies interest with a deferred decision as warm', () => {
