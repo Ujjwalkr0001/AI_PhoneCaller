@@ -1,6 +1,6 @@
 # Prototype audit — 7 November 2026
 
-Baseline: `58f1cb5`, ElevateBox AI Caller by Ujjwal / original repository contributors. Original files remain in git history. This audit precedes application changes. No live provider calls were made during the audit.
+Baseline: `58f1cb5`, ElevateBox AI Caller by Ujjwal / original repository contributors. Original files remain in git history. This audit precedes application changes. No live provider calls were made during the audit. The unmounted prototype files described below were removed from the current tree during the live-calling cleanup; the table records the original review.
 
 | Module | Responsibility and verified evidence | Decision |
 |---|---|---|
@@ -28,4 +28,4 @@ Inspected source/configuration, scripts, tests and existing static UI; binary ar
 
 ## Archive after migration
 
-Original `api/` and `vercel.json` now live in `legacy/`, outside provider auto-discovery and the image. Their original paths above describe the audited baseline. The old runtime is not supported.
+The original `api/` and `vercel.json` were archived after migration and have now been removed from the current tree. Their original paths above describe the audited baseline. Git history preserves them; the old runtime is not supported.

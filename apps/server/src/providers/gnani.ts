@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { FrameBuffer, sse } from '../audio.js';
 import type { SttClient, SttEvent, TtsClient } from '../contracts.js';
+import { gnaniSttKey, gnaniTtsKey } from '../provider-config.js';
 
 export class GnaniSttClient implements SttClient {
   onTurn = (_e: SttEvent) => {};
@@ -15,11 +16,11 @@ export class GnaniSttClient implements SttClient {
   constructor(
     private languageCodes: string[],
     private callId: string,
-    private key = process.env.GNANI_API_KEY,
+    private key = gnaniSttKey(),
     private endpoint = 'wss://api.vachana.ai/stt/v3/stream',
   ) {}
   async connect() {
-    if (!this.key) throw new Error('GNANI_API_KEY is required');
+    if (!this.key) throw new Error('GNANI_STT or GNANI_API_KEY is required');
     this.closed = false;
     await new Promise<void>((resolve, reject) => {
       const ws = (this.ws = new WebSocket(this.endpoint, {
@@ -101,14 +102,14 @@ export class GnaniSttClient implements SttClient {
 }
 export class GnaniTtsClient implements TtsClient {
   name = 'Gnani Timbre v3.0';
-  constructor(private key = process.env.GNANI_API_KEY) {}
+  constructor(private key = gnaniTtsKey()) {}
   async *synthesize(
     text: string,
     language: string,
     voice: string,
     signal: AbortSignal,
   ): AsyncGenerator<Buffer> {
-    if (!this.key) throw new Error('GNANI_API_KEY is required');
+    if (!this.key) throw new Error('GNANI_TTS or GNANI_API_KEY is required');
     const response = await fetch('https://api.vachana.ai/api/v1/tts/sse', {
       method: 'POST',
       signal: AbortSignal.any([signal, AbortSignal.timeout(20000)]),

@@ -1,6 +1,6 @@
 # ElevateBox Campaign Studio
 
-**New frontend (8 November):** a light public landing page, five-workflow workspace, recruitment question builder, phone-call panel and requirements-coverage results. Open http://localhost:3000, then choose **Sign in**. See [frontend refresh](docs/FRONTEND_REFRESH.md) and [current screenshots](docs/screens-refresh/README.md). Live calling still needs configured providers; the local demo uses explicit simulation.
+**New frontend (8 November):** a light public landing page, five-workflow workspace, recruitment question builder, phone-call panel and requirements-coverage results. Open http://localhost:3000, then choose **Sign in**. See [frontend refresh](docs/FRONTEND_REFRESH.md) and [current screenshots](docs/screens-refresh/README.md). For local real calls, use the private `.env` Gnani STT/TTS, Groq and Twilio keys, set `MOCK_MODE=false`, and provide `TWILIO_WEBHOOK_BASE_URL` as an internet-reachable HTTPS origin that forwards voice, status and WebSocket media to the server. `PUBLIC_BASE_URL` remains the dashboard origin. Follow the [live calling guide](docs/LIVE_CALLING.md).
 
 Configure sales and HR calling campaigns with Gnani Prisma speech recognition, Gnani Timbre voice, and a separately configured dialogue LLM. The persistent server serves the React app, browser audio, Twilio Media Streams, authenticated APIs and a Postgres-backed queue.
 
@@ -70,7 +70,7 @@ flowchart LR
   Pipeline --> Monitor[Authenticated live monitor]
 ```
 
-Active audio is pinned to one long-running process. Durable data survives process restart; an active conversation does not. Vercel functions are no longer the runtime. Original source remains for provenance but legacy routes/scripts are not mounted or supported by the new deployment. Legacy resume sharing is removed and `public/` is never served.
+Active audio is pinned to one long-running process. Durable data survives process restart; an active conversation does not. Vercel functions are no longer the runtime. Original source remains in Git history; unmounted routes and diagnostic scripts were removed from the current tree. Legacy resume sharing is removed and `public/` is never served.
 
 ## Verification and screenshots
 

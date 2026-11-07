@@ -35,6 +35,7 @@ import type { Transport } from './contracts.js';
 import type { ConversationPipeline } from './pipeline.js';
 import { GnaniTtsClient } from './providers/gnani.js';
 import { pcm16ToWav } from './audio.js';
+import { dialogueConfig, liveReadiness, twilioWebhookBase } from './provider-config.js';
 
 const idSchema = z.object({ id: z.string().uuid() });
 const csv = (value: unknown) => {
@@ -187,49 +188,58 @@ export async function buildApp(store: Store, platform: Platform) {
   );
   await authRoutes(app, store);
 
-  app.get('/api/v1/providers', async () => ({
-    simulation: platform.simulation,
-    dialogue: platform.simulation
-      ? 'Mock dialogue (simulation)'
-      : `${process.env.DIALOGUE_PROVIDER ?? 'sarvam'} / ${process.env.DIALOGUE_MODEL ?? 'sarvam-105b-conversations'}`,
-    services: [
-      {
-        name: 'Gnani Prisma STT',
-        status: platform.simulation
-          ? 'simulated'
-          : process.env.GNANI_API_KEY
-            ? 'configured, not probed'
-            : 'missing key',
-      },
-      {
-        name: 'Gnani Timbre TTS',
-        status: platform.simulation
-          ? 'simulated'
-          : process.env.GNANI_API_KEY
-            ? 'configured, not probed'
-            : 'missing key',
-      },
-      {
-        name: 'Dialogue model',
-        status: platform.simulation
-          ? 'simulated'
-          : process.env.DIALOGUE_API_KEY || process.env.SARVAM_API_KEY
-            ? 'configured, not probed'
-            : 'missing key',
-      },
-      {
-        name: 'Twilio',
-        status: platform.simulation
-          ? 'simulated'
-          : process.env.TWILIO_AUTH_TOKEN
-            ? 'configured, not probed'
-            : 'missing credentials',
-      },
-      { name: 'Postgres', status: 'connected' },
-    ],
-    voices,
-    languages,
-  }));
+  app.get('/api/v1/providers', async () => {
+    const ready = liveReadiness(),
+      dialogue = dialogueConfig();
+    return {
+      simulation: platform.simulation,
+      live_ready: Object.values(ready).every(Boolean) && !platform.simulation,
+      dialogue: platform.simulation
+        ? 'Mock dialogue (simulation)'
+        : `${dialogue.provider} / ${dialogue.model}`,
+      services: [
+        {
+          name: 'Gnani Prisma STT',
+          status: platform.simulation
+            ? 'simulated'
+            : ready.stt
+              ? 'configured, not probed'
+              : 'missing key',
+        },
+        {
+          name: 'Gnani Timbre TTS',
+          status: platform.simulation
+            ? 'simulated'
+            : ready.tts
+              ? 'configured, not probed'
+              : 'missing key',
+        },
+        {
+          name: 'Dialogue model',
+          status: platform.simulation
+            ? 'simulated'
+            : ready.dialogue
+              ? 'configured, not probed'
+              : 'missing key',
+        },
+        {
+          name: 'Twilio',
+          status: platform.simulation
+            ? 'simulated'
+            : ready.twilio
+              ? 'configured, not probed'
+              : 'missing credentials',
+        },
+        {
+          name: 'Twilio webhook URL',
+          status: ready.webhook ? 'configured, not probed' : 'missing public HTTPS URL',
+        },
+        { name: 'Postgres', status: 'connected' },
+      ],
+      voices,
+      languages,
+    };
+  });
   app.get('/api/v1/campaigns', async (req) => store.list('campaigns', req.user!.org_id));
   app.post('/api/v1/campaigns', async (req) => {
     const c = campaignSchema.parse(req.body);
@@ -738,7 +748,7 @@ export async function buildApp(store: Store, platform: Platform) {
       } else {
         const stream = xml
           .connect()
-          .stream({ url: `${process.env.PUBLIC_BASE_URL!.replace(/^http/, 'ws')}/twilio/media` });
+          .stream({ url: `${twilioWebhookBase().replace(/^http/, 'ws')}/twilio/media` });
         stream.parameter({ name: 'call_id', value: call.id });
       }
       return reply.type('text/xml').send(xml.toString());

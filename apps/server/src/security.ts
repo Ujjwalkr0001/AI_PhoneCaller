@@ -4,6 +4,7 @@ import { isIP } from 'node:net';
 import { request as httpsRequest } from 'node:https';
 import argon2 from 'argon2';
 import twilio from 'twilio';
+import { twilioWebhookBase } from './provider-config.js';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Role } from '../../../packages/shared/src/index.js';
@@ -127,16 +128,21 @@ export async function authRoutes(app: FastifyInstance, store: Store) {
 }
 export function validTwilio(req: FastifyRequest): boolean {
   const secret = process.env.TWILIO_AUTH_TOKEN,
-    base = process.env.PUBLIC_BASE_URL;
+    base = twilioWebhookBase();
   if (!secret || !base) return false;
   const signature = req.headers['x-twilio-signature'];
+  const urls = req.url.startsWith('/twilio/media')
+    ? [`${base.replace(/^http/, 'ws')}${req.url}`, `${base.replace(/^http/, 'ws')}${req.url}/`]
+    : [`${base}${req.url}`];
   return (
     typeof signature === 'string' &&
-    twilio.validateRequest(
-      secret,
-      signature,
-      `${base}${req.url}`,
-      (req.body ?? {}) as Record<string, string>,
+    urls.some((url) =>
+      twilio.validateRequest(
+        secret,
+        signature,
+        url,
+        (req.body ?? {}) as Record<string, string>,
+      ),
     )
   );
 }

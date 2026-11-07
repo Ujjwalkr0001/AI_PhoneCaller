@@ -36,7 +36,7 @@ pnpm test:e2e
 
 ## Live calling and scope
 
-The running local server is in **simulation mode**. Browser tests use scripted dialogue and silent mock speech. To place real calls, an administrator must configure Twilio, Gnani and the dialogue provider, provide a public HTTPS `PUBLIC_BASE_URL`, select live mode and restart the server. The Settings connection guide lists the relevant environment keys. Live account credentials, audio quality and PSTN delivery were not verified in this frontend task.
+This report records the frontend verification before live-provider wiring. For the current Gnani/Groq/Twilio setup and local live-calling instructions, see [LIVE_CALLING.md](LIVE_CALLING.md). Audio quality and a full PSTN conversation still require a consented destination call.
 
 The five frontend workflows use the existing Sales/HR engines and schemas. Customer care is an outbound, approved-answer/follow-up workflow. Appointments captures booking requests and preferred times for the team; no external calendar reservation is claimed. Credentials are server-managed; this refresh does not add an in-browser secret-management backend, signup/OAuth, inbound support routing, calendar integration or automatic WhatsApp delivery.
 

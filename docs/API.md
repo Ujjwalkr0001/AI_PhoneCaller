@@ -55,7 +55,7 @@ In explicit mock mode only, `{type:"text",text:"synthetic caller answer"}` injec
 
 ## Twilio
 
-`POST /twilio/voice?call_id=<uuid>` returns Connect/Stream TwiML; AMD machines/faxes hang up and save VOICEMAIL. `POST /twilio/status?call_id=<uuid>` handles lifecycle and failures. Both verify `X-Twilio-Signature` against exact PUBLIC_BASE_URL + request URL and parsed form fields. Inbound unknown calls do not create arbitrary campaigns.
+`POST /twilio/voice?call_id=<uuid>` returns Connect/Stream TwiML; AMD machines/faxes hang up and save VOICEMAIL. `POST /twilio/status?call_id=<uuid>` handles lifecycle and failures. Both verify `X-Twilio-Signature` against the exact `TWILIO_WEBHOOK_BASE_URL` (or `PUBLIC_BASE_URL` fallback) plus request URL and parsed form fields. Media WebSockets verify the signed `wss:` URL. Inbound unknown calls do not create arbitrary campaigns.
 
 `GET /twilio/media` verifies the upgrade signature, then requires start's `callSid` to match the reserved call, binds `streamSid`, verifies `audio/x-mulaw`, 8000 Hz, mono. Inbound media uses that stream. Connected/mark/stop are handled; DTMF/unknown events are ignored. Outbound media/mark/clear use the bound stream ID. [Twilio message reference](https://www.twilio.com/docs/voice/media-streams/websocket-messages).
 

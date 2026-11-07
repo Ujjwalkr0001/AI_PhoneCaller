@@ -1,4 +1,35 @@
-export { mulawToLinearSample, mulawToPcm16le, pcm16ToWav } from '../../../src/cascaded/mulaw.js';
+/** Decode Twilio's G.711 μ-law audio to signed 16-bit PCM for Gnani STT. */
+export function mulawToLinearSample(byte: number): number {
+  const value = ~byte & 0xff;
+  const sign = value & 0x80;
+  const exponent = (value & 0x70) >> 4;
+  const mantissa = value & 0x0f;
+  const sample = (((mantissa << 3) + 0x84) << exponent) - 0x84;
+  return sign ? -sample : sample;
+}
+export function mulawToPcm16le(mulaw: Buffer): Buffer {
+  const pcm = Buffer.alloc(mulaw.length * 2);
+  for (let i = 0; i < mulaw.length; i++) pcm.writeInt16LE(mulawToLinearSample(mulaw[i]), i * 2);
+  return pcm;
+}
+/** Wrap PCM in a WAV container for the authorized browser audio download. */
+export function pcm16ToWav(pcm: Buffer, sampleRate: number): Buffer {
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
 // ITU G.711 μ-law for signed 16-bit samples (132 bias, 32635 clip).
 export function linearToMulaw(sample: number): number {
   let sign = 0;

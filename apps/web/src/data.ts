@@ -27,6 +27,7 @@ export type DeliveryRow = Row<{
 export type DestinationRow = Row<{ name: string; kind: 'webhook'; url: string; enabled: boolean }>;
 export interface Providers {
   simulation: boolean;
+  live_ready: boolean;
   dialogue: string;
   services: { name: string; status: string }[];
 }

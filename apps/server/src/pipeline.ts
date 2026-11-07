@@ -20,6 +20,7 @@ import {
 } from './domain.js';
 import { FrameBuffer } from './audio.js';
 import { redactSensitive } from './security.js';
+import { analyzeCall } from './analysis.js';
 import { parseCallbackPhrase } from '../../../src/utils/time-parser.js';
 export interface PipelineHooks {
   event(type: string, data: unknown): void;
@@ -413,20 +414,31 @@ export class ConversationPipeline {
     this.abort.abort();
     this.stt.close();
     const completed = this.flow.stage === 'WRAP_UP';
+    const finalOutcome =
+      outcome ??
+      this.outcome ??
+      (this.campaign.type === 'hr' && completed
+        ? 'CANDIDATE_COMPLETED'
+        : this.interest === 'hot'
+          ? 'INTERESTED_HOT'
+          : this.interest === 'warm'
+            ? 'INTERESTED_WARM'
+            : 'NOT_INTERESTED');
+    let postCall: Awaited<ReturnType<typeof analyzeCall>> | undefined;
+    if (!this.simulation && this.transcript.some((turn) => turn.role === 'caller')) {
+      try {
+        postCall = await analyzeCall(this.campaign, this.transcript, finalOutcome, this.fields);
+        this.tokens += postCall.tokens;
+        this.provider(this.dialogue.name, 'post-call analysis complete');
+      } catch {
+        this.provider(this.dialogue.name, 'post-call analysis unavailable; saved transcript retained');
+      }
+    }
     const result: CallResult = {
       campaign_id: this.campaignId,
       contact_id: this.contactId,
-      outcome:
-        outcome ??
-        this.outcome ??
-        (this.campaign.type === 'hr' && completed
-          ? 'CANDIDATE_COMPLETED'
-          : this.interest === 'hot'
-            ? 'INTERESTED_HOT'
-            : this.interest === 'warm'
-              ? 'INTERESTED_WARM'
-              : 'NOT_INTERESTED'),
-      summary: `${this.simulation ? '[SIMULATION] ' : ''}${this.campaign.type === 'hr' ? 'Advisory screening' : 'Campaign call'} ended at ${this.flow.stage}.\n${
+      outcome: finalOutcome,
+      summary: postCall?.summary ?? `${this.simulation ? '[SIMULATION] ' : ''}${this.campaign.type === 'hr' ? 'Advisory screening' : 'Campaign call'} ended at ${this.flow.stage}.\n${
         Object.entries(this.fields)
           .map(([k, v]) => `${k}: ${v}`)
           .join('\n') || 'No qualification fields captured.'
@@ -452,7 +464,9 @@ export class ConversationPipeline {
     };
     if (this.campaign.type === 'hr') {
       result.eligibility = eligibility(this.campaign, this.fields);
-      result.recommendation = 'Advisory only. A human must review job-related criteria and decide.';
+      result.recommendation = postCall?.job_related_comments
+        ? `${postCall.job_related_comments} Human review required.`
+        : 'Review the job-related answers and transcript. A human makes the hiring decision.';
     }
     result.follow_up_eligible = shouldSubmit(result);
     await this.hooks.complete(result);

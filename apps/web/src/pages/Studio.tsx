@@ -294,7 +294,9 @@ function StudioForm({ workflow }: { workflow: WorkflowId }) {
       notify(
         providers?.simulation
           ? 'Test call queued. Calling-hour and consent checks still apply.'
-          : 'Call queued through Twilio. Your calling rules still apply.',
+          : outsideHours
+            ? `Live call scheduled for ${draft.start}–${draft.end} IST.`
+            : 'Live call queued. Your calling rules still apply.',
       );
       for (const path of ['/campaigns', '/contacts', '/calls'])
         void query.invalidateQueries({ queryKey: [path] });
@@ -310,8 +312,15 @@ function StudioForm({ workflow }: { workflow: WorkflowId }) {
     ownCalls = (calls.data ?? []).filter((c) => c.data.campaign_id === saved?.id),
     call = ownCalls[0],
     contact = (contacts.data ?? []).find((c) => c.data.campaign_id === saved?.id),
-    hasProviderGap = providers?.services.some((s) => /missing/i.test(s.status)),
-    pause = settings.data?.kill_switch;
+    hasProviderGap = providers ? !providers.simulation && !providers.live_ready : false,
+    pause = settings.data?.kill_switch,
+    currentIst = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(new Date()),
+    outsideHours = currentIst < draft.start || currentIst >= draft.end;
   const reset = () => {
     setQueued(false);
     setSaved(undefined);
@@ -655,13 +664,17 @@ function StudioForm({ workflow }: { workflow: WorkflowId }) {
                   ? 'Preparing your call…'
                   : providers?.simulation
                     ? 'Queue test call'
-                    : 'Place live call'}
+                    : outsideHours
+                      ? 'Schedule live call'
+                      : 'Place live call'}
               </Button>
               <div className="call-provider-note">
                 <ShieldCheck size={14} />
                 {providers?.simulation
                   ? 'Simulation mode · No real phone call will be placed.'
-                  : 'Calls are placed through your configured Twilio account.'}
+                  : outsideHours
+                    ? `It is ${currentIst} IST. The call will wait for ${draft.start}–${draft.end} IST.`
+                    : 'Calls are placed through your configured Twilio account.'}
               </div>
             </form>
             <div className="browser-test-option">
@@ -727,7 +740,8 @@ function StudioForm({ workflow }: { workflow: WorkflowId }) {
             </div>
             {hasProviderGap && (
               <p className="field-error">
-                Some providers need configuration. Open connections to review the setup.
+                Live calling needs a provider or public HTTPS callback URL. Open connections to
+                review the setup.
               </p>
             )}
           </aside>

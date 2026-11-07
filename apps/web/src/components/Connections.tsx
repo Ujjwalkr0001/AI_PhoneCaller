@@ -23,16 +23,16 @@ const guides = [
     description: 'The voice behind your agent',
     icon: AudioLines,
     console: 'https://www.gnani.ai/',
-    keys: ['GNANI_API_KEY'],
-    note: 'The existing integration uses Prisma for speech recognition and Timbre for speech synthesis.',
+    keys: ['GNANI_STT', 'GNANI_TTS'],
+    note: 'Prisma recognizes the caller; Timbre speaks the agent reply. A single GNANI_API_KEY is also supported.',
   },
   {
-    name: 'Dialogue',
+    name: 'Groq',
     description: 'The conversation behind the voice',
     icon: Link2,
-    console: 'https://dashboard.sarvam.ai/',
-    keys: ['DIALOGUE_API_KEY', 'DIALOGUE_MODEL'],
-    note: 'The dialogue model is configured separately from Gnani speech. Use the settings for your configured dialogue provider.',
+    console: 'https://console.groq.com/',
+    keys: ['GROQ_API_KEY'],
+    note: 'Groq runs the dialogue and writes a grounded post-call summary. The default model is openai/gpt-oss-20b. Explicit DIALOGUE_* settings can select another compatible model.',
   },
 ];
 export default function Connections() {
@@ -51,7 +51,7 @@ export default function Connections() {
         <div className="connection-grid">
           {guides.map((g) => {
             const service = providers.services.find((s) =>
-              s.name.includes(g.name === 'Dialogue' ? 'Dialogue' : g.name),
+              s.name.includes(g.name === 'Groq' ? 'Dialogue' : g.name),
             );
             return (
               <Card className="connection-card" key={g.name}>
@@ -88,7 +88,7 @@ export default function Connections() {
                     ))}
                   </ul>
                   <a href={g.console} target="_blank" rel="noreferrer" className="text-link">
-                    Open {g.name === 'Dialogue' ? 'provider dashboard' : g.name}
+                    Open {g.name}
                     <ExternalLink size={14} />
                   </a>
                 </Disclosure>
@@ -119,11 +119,11 @@ export default function Connections() {
         </div>
         <div className="setup-check">
           <Check size={15} />
-          <span>Gnani speech and your dialogue model configured.</span>
+          <span>Gnani STT/TTS and Groq dialogue configured.</span>
         </div>
         <div className="setup-check">
           <Check size={15} />
-          <span>PUBLIC_BASE_URL points to your server over public HTTPS.</span>
+          <span>TWILIO_WEBHOOK_BASE_URL points to your server over public HTTPS. PUBLIC_BASE_URL can remain localhost for the dashboard.</span>
         </div>
         <div className="setup-check">
           <Check size={15} />

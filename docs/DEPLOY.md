@@ -42,7 +42,7 @@ Compose database user is `caller`; the tests' default test URL uses `postgres`. 
 4. Set secrets separately for each app. Never paste real values into git, workflow YAML, screenshots, issue comments or logs.
 
 ```sh
-fly secrets set --app <staging-app> DATABASE_URL='<managed-direct-url>' PUBLIC_BASE_URL='https://<staging-host>' SESSION_SECRET='<random-32+-character-secret>' WEBHOOK_SIGNING_SECRET='<independent-random-secret>' GNANI_API_KEY='<key>' DIALOGUE_API_KEY='<key>' SEED_ADMIN_EMAIL='<admin-email>' SEED_ADMIN_PASSWORD='<strong-initial-password>'
+fly secrets set --app <staging-app> DATABASE_URL='<managed-direct-url>' PUBLIC_BASE_URL='https://<staging-host>' SESSION_SECRET='<random-32+-character-secret>' WEBHOOK_SIGNING_SECRET='<independent-random-secret>' GNANI_STT='<prisma-key>' GNANI_TTS='<timbre-key>' GROQ_API_KEY='<groq-key>' SEED_ADMIN_EMAIL='<admin-email>' SEED_ADMIN_PASSWORD='<strong-initial-password>'
 fly secrets set --app <staging-app> TWILIO_ACCOUNT_SID='<sid>' TWILIO_AUTH_TOKEN='<token>' TWILIO_PHONE_NUMBER='<e164>'
 fly deploy --remote-only --app <staging-app>
 fly scale count 1 --app <staging-app>
@@ -51,13 +51,13 @@ fly status --app <staging-app>
 
 `fly.toml` runs `node scripts/migrate.mjs` as the release command. It contains health checks, non-autostopping configuration and a starting shared CPU/1 GB VM size; those are deployment settings, **not capacity claims**. The non-root image runs under `tini` and includes production dependencies only.
 
-By default Gnani speech and Sarvam text dialogue are selected. If using an OpenAI-compatible alternative, set `DIALOGUE_PROVIDER`, `DIALOGUE_MODEL`, `DIALOGUE_URL` and `DIALOGUE_API_KEY` to its documented values. Text streaming + JSON-object support must be verified for the chosen model. No OpenAI audio model is used by this pipeline.
+Gnani speech is the default. When `GROQ_API_KEY` is present, Groq dialogue uses `openai/gpt-oss-20b`; otherwise the existing Sarvam-compatible dialogue path remains available. Explicit `DIALOGUE_PROVIDER`, `DIALOGUE_MODEL`, `DIALOGUE_URL` and `DIALOGUE_API_KEY` can select another compatible model. Text streaming and JSON-object support must be verified for a chosen model. No OpenAI audio model is used by this pipeline.
 
 For an explicitly simulated public staging demo only, additionally set `MOCK_MODE=true ALLOW_DEPLOYED_SIMULATION=true`. The UI must keep its simulation banner. Remove them and verify live providers before claiming a live demo.
 
 ## Twilio wiring
 
-Set the number's Voice webhook to `POST https://<host>/twilio/voice`; outbound calls attach the internal call ID query parameter through the adapter. Status callback: `/twilio/status`; stream: `wss://<host>/twilio/media`. Set `PUBLIC_BASE_URL` to the exact HTTPS origin without a trailing slash. Twilio signs the full URL, including its query string. Do not disable signature checks to debug a mismatch. Inspect proxy path/scheme and Twilio's [signature guidance](https://www.twilio.com/docs/usage/security), including the documented WSS trailing-slash caveat.
+Set the number's Voice webhook to `POST https://<host>/twilio/voice`; outbound calls attach the internal call ID query parameter through the adapter. Status callback: `/twilio/status`; stream: `wss://<host>/twilio/media`. In deployment, `PUBLIC_BASE_URL` can also be the webhook origin. For local tunnel development, keep `PUBLIC_BASE_URL` as the dashboard origin and set `TWILIO_WEBHOOK_BASE_URL` to the exact public HTTPS origin without a trailing slash. Twilio signs the full URL, including its query string. Do not disable signature checks to debug a mismatch. Inspect proxy path/scheme and Twilio's [signature guidance](https://www.twilio.com/docs/usage/security), including the documented WSS trailing-slash caveat.
 
 Trial accounts restrict verified destinations. Commercial India outbound calling requires suitable provider routing, permissions and operator compliance; verify with Twilio before any commercial campaign. Only teammates' consented phones belong on test allowlists. No live phone calls were placed during this build.
 

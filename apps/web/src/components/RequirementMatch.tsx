@@ -28,7 +28,7 @@ export default function RequirementMatch({
           aria-label={
             match.percent === null
               ? 'Not enough answers to score'
-              : `${match.percent}% of stated job requirements confirmed`
+              : `${match.percent}% of assessed job requirements matched expected answers`
           }
           style={{ '--match': `${match.percent ?? 0}%` } as React.CSSProperties}
         >
@@ -37,12 +37,12 @@ export default function RequirementMatch({
       </div>
       <p>
         {match.total
-          ? `${match.matched} of ${match.total} stated requirements confirmed. ${match.unknown} unanswered or unclear.`
+          ? `${match.matched} of ${match.total} stated requirements matched expected answers. ${match.unknown} unanswered or unclear.`
           : 'No explicit must-have criteria were assessed.'}
       </p>
       <div className="match-footnote">
         <ShieldCheck size={14} />
-        <span>Requirements coverage, not a hiring probability. Your team makes the decision.</span>
+        <span>Based on self-reported answers, not a hiring probability. Your team decides.</span>
       </div>
     </div>
   );

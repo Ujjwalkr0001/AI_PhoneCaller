@@ -19,6 +19,7 @@ import { CompatibleDialogue } from './providers/dialogue.js';
 import { ConversationPipeline } from './pipeline.js';
 import { postPublicWebhook, webhookSignature } from './security.js';
 import { logger } from '../../../src/utils/logger.js';
+import { requireLiveCalling, twilioWebhookBase } from './provider-config.js';
 
 export interface CampaignData extends Campaign {
   status: 'draft' | 'running' | 'paused' | 'stopped';
@@ -62,8 +63,8 @@ export class TwilioProvider implements TelephonyProvider {
     return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
   }
   async dial(to: string, id: string) {
-    const base = process.env.PUBLIC_BASE_URL;
-    if (!base?.startsWith('https://') || !process.env.TWILIO_PHONE_NUMBER)
+    const base = twilioWebhookBase();
+    if (!base.startsWith('https://') || !process.env.TWILIO_PHONE_NUMBER)
       throw new Error('Public HTTPS URL and Twilio number required');
     return (
       await this.client().calls.create({
@@ -146,6 +147,7 @@ export class Platform {
     );
   }
   async launch(org: string, id: string, key: string) {
+    if (!this.simulation) requireLiveCalling();
     const c = await this.store.get<CampaignData>('campaigns', org, id);
     if (!c) throw new Error('Campaign not found');
     if (!c.data.compliance.attested) throw new Error('Compliance attestation required');
@@ -375,8 +377,20 @@ export class Platform {
       await this.store.put('calls', org, call.data, call.id);
       await this.store.audit(org, 'call.dial', call.id, { simulation: this.simulation });
       if (this.simulation) await this.simulate(org, campaign, call, contact);
-    } catch {
-      await this.failCall(org, call, 'FAILED');
+    } catch (error) {
+      const rawCode = (error as { code?: unknown })?.code;
+      const code =
+        typeof rawCode === 'number' && rawCode >= 10000 && rawCode <= 99999
+          ? ` (Twilio code ${rawCode})`
+          : '';
+      await this.failCall(
+        org,
+        call,
+        'FAILED',
+        this.simulation
+          ? 'Simulated call setup failed. Check the server log.'
+          : `Call setup failed${code}. Check the Twilio call debugger, destination permissions, and public callback URL.`,
+      );
     }
   }
   async createPipeline(
@@ -573,7 +587,12 @@ export class Platform {
           { singletonKey: d.id, singletonSeconds: 30 },
         );
   }
-  async failCall(org: string, call: Row<CallData>, outcome: 'FAILED' | 'NO_ANSWER' | 'VOICEMAIL') {
+  async failCall(
+    org: string,
+    call: Row<CallData>,
+    outcome: 'FAILED' | 'NO_ANSWER' | 'VOICEMAIL',
+    summary = 'Call ended without a completed conversation.',
+  ) {
     if (this.active.has(call.id)) {
       await this.active.get(call.id)!.finish(outcome);
       return;
@@ -585,7 +604,7 @@ export class Platform {
         campaign_id: call.data.campaign_id,
         contact_id: call.data.contact_id,
         outcome,
-        summary: 'Call ended without a completed conversation.',
+        summary,
         extracted_fields: {},
         sentiment: 'unknown',
         languages: [],

@@ -184,13 +184,16 @@ export function LeadCard({
       {result && (
         <p className="summary">
           {result.summary
-            .split('\n')
-            .slice(0, 2)
-            .join('\n')
             .replace(/\[SIMULATION\]\s*/, '')
             .replace(/WRAP_UP/g, 'the closing stage')
             .replace(/DISCOVERY_SCREENING/g, 'screening')}
         </p>
+      )}
+      {result?.recommendation && result.eligibility && (
+        <div className="stack-small" style={{ marginTop: 16 }}>
+          <strong>Recruiter notes</strong>
+          <p>{result.recommendation}</p>
+        </div>
       )}
       <dl className="label-values">
         {Object.entries(fields).map(([key, value]) => (

@@ -3,6 +3,7 @@ import type { Campaign, Stage, Turn } from '../../../../packages/shared/src/inde
 import type { DialogueClient } from '../contracts.js';
 import { promptBuilder } from '../domain.js';
 import { sse } from '../audio.js';
+import { dialogueConfig } from '../provider-config.js';
 const output = z.object({
   text: z.string().max(2000),
   tools: z
@@ -25,7 +26,7 @@ const output = z.object({
 });
 // OpenAI-compatible Chat Completions text endpoint; Gnani does not decide dialogue in this pipeline.
 export class CompatibleDialogue implements DialogueClient {
-  name = `${process.env.DIALOGUE_PROVIDER ?? 'sarvam'} / ${process.env.DIALOGUE_MODEL ?? 'sarvam-105b-conversations'}`;
+  name = `${dialogueConfig().provider} / ${dialogueConfig().model}`;
   async reply(
     c: Campaign,
     history: Turn[],
@@ -34,16 +35,16 @@ export class CompatibleDialogue implements DialogueClient {
     signal: AbortSignal,
     first: () => void,
   ) {
-    const key = process.env.DIALOGUE_API_KEY ?? process.env.SARVAM_API_KEY;
-    if (!key) throw new Error('DIALOGUE_API_KEY is required');
+    const config = dialogueConfig();
+    if (!config.key) throw new Error('GROQ_API_KEY or DIALOGUE_API_KEY is required');
     const response = await fetch(
-      process.env.DIALOGUE_URL ?? 'https://api.sarvam.ai/v1/chat/completions',
+      config.url,
       {
         method: 'POST',
         signal: AbortSignal.any([signal, AbortSignal.timeout(25000)]),
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${config.key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: process.env.DIALOGUE_MODEL ?? 'sarvam-105b-conversations',
+          model: config.model,
           temperature: 0.2,
           max_tokens: 600,
           stream: true,
