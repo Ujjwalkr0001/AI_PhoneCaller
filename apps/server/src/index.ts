@@ -6,6 +6,7 @@ import { seedAdmin } from './security.js';
 if (!process.env.DATABASE_URL || !process.env.PUBLIC_BASE_URL) throw new Error('DATABASE_URL and PUBLIC_BASE_URL are required');
 if (process.env.NODE_ENV === 'production' && process.env.MOCK_MODE === 'true' && process.env.ALLOW_DEPLOYED_SIMULATION !== 'true') throw new Error('Deployed simulations require explicit ALLOW_DEPLOYED_SIMULATION=true');
 if (process.env.NODE_ENV === 'production' && !process.env.PUBLIC_BASE_URL.startsWith('https://')) throw new Error('Production requires HTTPS');
+if (process.env.NODE_ENV === 'production' && (process.env.SESSION_SECRET?.length ?? 0) < 32) throw new Error('Production requires SESSION_SECRET of at least 32 characters');
 const store = new Store(process.env.DATABASE_URL);
 await store.ready(); await seedAdmin(store);
 const platform = new Platform(store); await platform.start();

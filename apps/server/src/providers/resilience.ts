@@ -1,4 +1,42 @@
-import type { TtsClient } from '../contracts.js';
+import type { SttClient, SttEvent, TtsClient } from '../contracts.js';
+export class ResilientStt implements SttClient {
+  onTurn = (_e: SttEvent) => {}; onActivity = () => {}; onError = (_e: Error) => {};
+  private client?: SttClient; private closed = false; private recovering = false; private reconnects = 0; private usingFallback = false;
+  readonly breaker = new CircuitBreaker(2);
+  constructor(private primary: () => SttClient, private fallback: (() => SttClient) | undefined, private trace: (name: string, event: string) => void, private primaryName = 'Gnani Prisma v3.0') {}
+  private async open(factory: () => SttClient, name: string) {
+    const client = factory(); this.client = client; let ready = false;
+    client.onTurn = e => { if (this.client === client) this.onTurn(e); };
+    client.onActivity = () => { if (ready && this.client === client) this.onActivity(); };
+    client.onError = error => { if (ready && this.client === client && !this.closed) void this.recover(error); };
+    await client.connect(); ready = true; this.trace(name, 'connected');
+  }
+  async connect() {
+    try { await this.open(this.primary, this.primaryName); this.breaker.success(); }
+    catch (error) {
+      this.client?.close(); this.breaker.fail(); this.trace(this.primaryName, 'failed');
+      if (!this.fallback) throw error;
+      this.usingFallback = true; this.trace('Soniox', 'failover'); await this.open(this.fallback, 'Soniox');
+    }
+  }
+  private async recover(error: Error) {
+    if (this.recovering || this.closed) return; this.recovering = true; this.client?.close(); this.breaker.fail();
+    try {
+      if (this.usingFallback) throw error;
+      if (++this.reconnects <= 1 && !this.breaker.open) { this.trace(this.primaryName, 'reconnecting; current utterance may need repeating'); await this.open(this.primary, this.primaryName); }
+      else if (this.fallback) { this.usingFallback = true; this.trace('Soniox', 'failover'); await this.open(this.fallback, 'Soniox'); }
+      else throw error;
+    } catch (failure) {
+      if (!this.usingFallback && this.fallback) {
+        this.client?.close(); this.usingFallback = true; this.trace('Soniox', 'failover');
+        try { await this.open(this.fallback, 'Soniox'); } catch { this.onError(new Error('STT fallback failed')); }
+      } else this.onError(failure instanceof Error ? failure : new Error('STT recovery failed'));
+    }
+    finally { this.recovering = false; }
+  }
+  sendAudio(pcm: Buffer) { if (!this.closed && !this.recovering) this.client?.sendAudio(pcm); }
+  close() { this.closed = true; this.client?.close(); }
+}
 export class CircuitBreaker {
   failures = 0; openUntil = 0;
   constructor(private threshold = 3, private cooldown = 30000) {}

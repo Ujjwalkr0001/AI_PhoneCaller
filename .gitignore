@@ -28,3 +28,5 @@ docs/provider/
 playwright-report/
 test-results/
 .local/
+.local-audit.json
+output/

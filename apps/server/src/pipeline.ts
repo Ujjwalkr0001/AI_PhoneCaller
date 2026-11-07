@@ -13,6 +13,9 @@ export class ConversationPipeline {
   private duration?: ReturnType<typeof setTimeout>; private idle?: ReturnType<typeof setTimeout>; private idleCount = 0;
   private outcome?: Outcome; private interest?: 'hot' | 'warm' | 'cold'; private language: string; private spokenLanguages = new Set<string>();
   private sttSeconds = 0; private ttsChars = 0; private tokens = 0; private busy = false; private toolResult: unknown;
+  private repeatCount = 0;
+  private resolveIntro!: () => void;
+  private introDone = new Promise<void>(resolve => { this.resolveIntro = resolve; });
   callbackAt?: string;
   constructor(readonly campaign: Campaign, readonly campaignId: string, readonly contactId: string | undefined,
     readonly stt: SttClient, readonly tts: TtsClient, readonly dialogue: DialogueClient, readonly transport: Transport,
@@ -20,17 +23,17 @@ export class ConversationPipeline {
   provider(provider: string, event: string) { const trace = { provider, event, at: new Date().toISOString() }; this.trace.push(trace); this.hooks.event('provider', trace); }
   async start() {
     this.stt.onActivity = () => this.bargeIn();
-    this.stt.onTurn = e => { void this.turn(e).catch(() => this.finish('FAILED')); };
+    this.stt.onTurn = e => { void this.turn(e).catch(() => { if (!this.abort.signal.aborted) return this.finish('FAILED'); }); };
     this.stt.onError = error => { this.hooks.event('error', { message: error.message }); void this.finish('FAILED'); };
     await this.stt.connect();
-    this.provider(this.simulation ? 'Mock STT (simulation)' : process.env.STT_PROVIDER === 'soniox' ? 'Soniox' : 'Gnani Prisma v3.0', 'connected');
+    this.provider(this.simulation ? 'Mock STT (simulation)' : 'Speech recognition', 'ready; see connection/failover trace for actual provider');
     this.provider(this.dialogue.name, 'selected');
-    this.duration = setTimeout(() => { void this.finish(this.outcome ?? 'NOT_INTERESTED'); }, this.campaign.max_call_duration_s * 1000);
+    this.duration = setTimeout(() => { this.hooks.event('exit', 'TIMEOUT'); void this.finish(this.outcome ?? 'NOT_INTERESTED'); }, this.campaign.max_call_duration_s * 1000);
     await this.say(opening(this.campaign, this.firstName));
-    this.flow.advance('PERMISSION'); this.hooks.event('stage', this.flow.stage); this.armIdle();
+    this.flow.advance('PERMISSION'); this.resolveIntro(); this.hooks.event('stage', this.flow.stage); this.armIdle();
   }
-  input(pcm: Buffer) { if (!this.finishing) { this.sttSeconds += pcm.length / 16000; this.stt.sendAudio(pcm); } }
-  bargeIn() { if (!this.busy) return; this.generation++; this.abort.abort(); this.transport.clear(); this.busy = false; this.hooks.event('barge_in', { at: Date.now() }); }
+  input(pcm: Buffer) { if (!this.finishing) { this.sttSeconds += pcm.length / 16000; if (this.sttSeconds > this.campaign.max_call_duration_s) { void this.finish('FAILED'); return; } this.stt.sendAudio(pcm); } }
+  bargeIn() { if (!this.busy || this.flow.stage === 'GREETING_DISCLOSURE') return; this.generation++; this.abort.abort(); this.transport.clear(); this.busy = false; this.hooks.event('barge_in', { at: Date.now() }); }
   private armIdle() {
     clearTimeout(this.idle);
     this.idle = setTimeout(() => {
@@ -40,6 +43,7 @@ export class ConversationPipeline {
   }
   private record(role: Turn['role'], text: string) { const turn = { role, text: redactSensitive(text, this.campaign.type === 'hr'), at: new Date().toISOString() }; this.transcript.push(turn); this.hooks.event('transcript', turn); }
   async turn(e: SttEvent) {
+    if (this.flow.stage === 'GREETING_DISCLOSURE') await this.introDone;
     if (this.finishing) return;
     clearTimeout(this.idle); this.idleCount = 0; this.bargeIn();
     const token = ++this.generation; this.abort = new AbortController(); this.busy = true;
@@ -48,11 +52,17 @@ export class ConversationPipeline {
     const lang = e.language?.includes('-') ? e.language : e.language ? `${e.language}-IN` : undefined;
     if (text.length >= 12 && lang && this.campaign.languages.includes(lang as Campaign['languages'][number])) this.language = lang;
     this.spokenLanguages.add(this.language);
-    if (/do not call|don't call|stop calling|remove my number|never call|मुझे कॉल मत|कॉल मत करना|फोन मत|నాకు కాల్ చేయ|அழைக்க வேண்டாம்/i.test(text)) {
+    if (/do not call|don't call|stop calling|remove my number|never call|do not contact|don't contact|^stop[.!]?\s*$|मुझे कॉल मत|कॉल मत करना|फोन मत|కాల్ చేయవద్దు|కాల్ చేయకండి|ఫోన్ చేయొద్దు|அழைக்க வேண்டாம்/i.test(text)) {
       await this.tool({ name: 'mark_do_not_call', args: {} }, text);
       await this.say('I am sorry. I have added your number to our do-not-call list. Goodbye.'); return this.finish('DO_NOT_CALL');
     }
     if (/wrong (person|number)|not the right person/i.test(text)) { await this.say('Sorry for the interruption. Goodbye.'); return this.finish('WRONG_NUMBER'); }
+    if (/\b(fuck|go away|leave me alone|shut up)\b/i.test(text)) { await this.say('I am sorry for the interruption. Goodbye.'); return this.finish('NOT_INTERESTED'); }
+    if (!/\p{L}/u.test(text) || /unintelligible|noisy line|^what\??$|cannot hear|can't hear/i.test(text)) {
+      if (++this.repeatCount >= 2) { await this.say('We can try another time. Thank you. Goodbye.'); return this.finish('NOT_INTERESTED'); }
+      await this.say('Could you please repeat that?'); this.armIdle(); return;
+    }
+    this.repeatCount = 0;
     if (/not interested|no interest|नहीं चाहिए/i.test(text)) { await this.say('Thank you for your time. Goodbye.'); return this.finish(this.campaign.type === 'hr' ? 'CANDIDATE_DECLINED' : 'NOT_INTERESTED'); }
     if (/call me (later|tomorrow|after)|call back|callback|कल.*कॉल/i.test(text)) {
       const result = await this.tool({ name: 'schedule_callback', args: { when_text: text } }, text);
@@ -71,7 +81,7 @@ export class ConversationPipeline {
     const results: unknown[] = [];
     for (const tool of reply.tools) results.push(await this.tool(tool, text));
     this.toolResult = results;
-    await this.say(safeReply(this.campaign, reply.text), timing, e.endOfSpeechAt);
+    await this.say(this.outcome === 'DO_NOT_CALL' ? 'I am sorry. Your number has been added to our do-not-call list. Goodbye.' : safeReply(this.campaign, reply.text), timing, e.endOfSpeechAt);
     this.latency.push(timing); this.hooks.event('latency', timing);
     this.busy = false;
     if (this.outcome === 'DO_NOT_CALL' || this.outcome === 'WRONG_NUMBER' || this.flow.stage === 'WRAP_UP') return this.finish(this.outcome);
@@ -81,7 +91,7 @@ export class ConversationPipeline {
     let result: unknown;
     try {
       switch (call.name) {
-        case 'capture_fields': Object.assign(this.fields, validateFields(this.campaign, z.record(z.unknown()).parse(call.args.fields), callerText)); result = { captured: Object.keys(this.fields) }; break;
+        case 'capture_fields': Object.assign(this.fields, validateFields(this.campaign, z.record(z.string(), z.unknown()).parse(call.args.fields), callerText)); result = { captured: Object.keys(this.fields) }; break;
         case 'advance_stage': {
           const complete = questions(this.campaign).filter(q => q.required || q.must_have).every(q => this.fields[q.field_key] !== undefined);
           this.flow.advance(z.enum(['PERMISSION', 'DISCOVERY_SCREENING', 'PITCH_ROLE_INTRO', 'OBJECTIONS_QA', 'CLOSE', 'WRAP_UP']).parse(call.args.stage), complete);
@@ -101,7 +111,7 @@ export class ConversationPipeline {
         case 'end_call': if (this.flow.stage !== 'WRAP_UP') throw new Error('Complete required flow before ending'); result = { ending: true }; break;
         default: throw new Error('Unknown tool');
       }
-    } catch (error) { result = { error: error instanceof Error ? error.message : 'Invalid tool arguments' }; }
+    } catch (error) { if (call.name === 'mark_do_not_call') throw error; result = { error: error instanceof Error ? error.message : 'Invalid tool arguments' }; }
     const entry = { name: call.name, args: redactSensitive(JSON.stringify(call.args), this.campaign.type === 'hr'), result, at: new Date().toISOString() };
     this.tools.push(entry); this.hooks.event('tool', entry); this.hooks.event('fields', this.fields); return result;
   }
@@ -128,7 +138,7 @@ export class ConversationPipeline {
     this.finishing = this.finalize(outcome); return this.finishing;
   }
   private async finalize(outcome?: Outcome) {
-    clearTimeout(this.duration); clearTimeout(this.idle); this.abort.abort(); this.stt.close();
+    clearTimeout(this.duration); clearTimeout(this.idle); this.resolveIntro(); this.abort.abort(); this.stt.close();
     const completed = this.flow.stage === 'WRAP_UP';
     const result: CallResult = {
       campaign_id: this.campaignId, contact_id: this.contactId,

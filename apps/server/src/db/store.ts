@@ -1,5 +1,6 @@
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { Row } from '../../../../packages/shared/src/index.js';
 
@@ -13,12 +14,12 @@ export class Store {
     this.pool = new pg.Pool({ connectionString: url, max: 10, connectionTimeoutMillis: 5000, application_name: 'gnani-caller' });
     this.orm = drizzle(this.pool);
   }
-  async ready() { await this.pool.query('select 1'); }
+  async ready() { await this.orm.execute(sql`select 1`); }
   async list<T = Record<string, unknown>>(table: Table, org: string): Promise<Row<T>[]> {
-    return (await this.pool.query(`select * from ${table} where org_id=$1 order by created_at desc limit 5000`, [org])).rows;
+    return (await this.orm.execute(sql`select * from ${sql.identifier(table)} where org_id=${org} order by created_at desc limit 5000`)).rows as unknown as Row<T>[];
   }
   async get<T = Record<string, unknown>>(table: Table, org: string, id: string): Promise<Row<T> | undefined> {
-    return (await this.pool.query(`select * from ${table} where org_id=$1 and id=$2`, [org, id])).rows[0];
+    return (await this.orm.execute(sql`select * from ${sql.identifier(table)} where org_id=${org} and id=${id}`)).rows[0] as unknown as Row<T> | undefined;
   }
   async put<T>(table: Table, org: string, data: T, id: string = randomUUID()): Promise<Row<T>> {
     const result = await this.pool.query(`insert into ${table} (id,org_id,data) values ($1,$2,$3) on conflict (id) do update set data=excluded.data,updated_at=now() where ${table}.org_id=excluded.org_id returning *`, [id, org, JSON.stringify(data)]);

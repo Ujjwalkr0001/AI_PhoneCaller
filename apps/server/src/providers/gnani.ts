@@ -6,12 +6,12 @@ export class GnaniSttClient implements SttClient {
   onTurn = (_e: SttEvent) => {}; onActivity = () => {}; onError = (_e: Error) => {};
   private ws?: WebSocket; private timer?: ReturnType<typeof setInterval>; private closed = false;
   private frames = new FrameBuffer(1024); private queue: Buffer[] = []; private endAt?: number;
-  constructor(private languageCodes: string[], private callId: string, private key = process.env.GNANI_API_KEY) {}
+  constructor(private languageCodes: string[], private callId: string, private key = process.env.GNANI_API_KEY, private endpoint = 'wss://api.vachana.ai/stt/v3/stream') {}
   async connect() {
     if (!this.key) throw new Error('GNANI_API_KEY is required');
     this.closed = false;
     await new Promise<void>((resolve, reject) => {
-      const ws = this.ws = new WebSocket('wss://api.vachana.ai/stt/v3/stream', { handshakeTimeout: 10000, headers: {
+      const ws = this.ws = new WebSocket(this.endpoint, { handshakeTimeout: 10000, headers: {
         'x-api-key-id': this.key!, language_code: this.languageCodes.join(','), model: 'prisma-v3.0', format: 'codemix',
         'x-sample-rate': '8000', 'x-min-silence-ms': '500', 'x-vad-threshold': '0.65', 'x-api-request-id': this.callId,
       } });

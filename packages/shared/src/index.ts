@@ -15,7 +15,7 @@ export const campaignSchema = z.object({
   company_about: text.default(''), website: z.union([z.string().url(), z.literal('')]).optional(),
   languages: z.array(languageSchema).min(1).max(4).default(['en-IN']),
   agent_persona: z.object({ name: z.string().min(1).max(40), tone: z.enum(['formal', 'friendly', 'energetic']) }).default({ name: 'Mira', tone: 'friendly' }),
-  voice: z.record(languageSchema, z.enum(voices)).default({ 'en-IN': 'Shivani' }),
+  voice: z.partialRecord(languageSchema, z.enum(voices)).default({ 'en-IN': 'Shivani' }),
   opening_style: text.default('Brief and respectful'), callback_number_or_contact: text.default('The team will follow up'),
   handoff: z.enum(['none', 'callback']).default('callback'), fact_sheet: text.default(''), key_facts: list,
   faqs: z.array(z.object({ q: text, a: text })).max(30).default([]), do_not_say: list,
@@ -25,8 +25,8 @@ export const campaignSchema = z.object({
     retry_gap_min: z.number().int().min(30).default(60), concurrency: z.number().int().min(1).max(10).default(2),
     daily_cap: z.number().int().min(1).max(200).default(50), daily_minutes: z.number().positive().max(1000).default(100),
     daily_stt_seconds: z.number().positive().default(6000), daily_tts_chars: z.number().positive().default(100000),
-  }).default({}),
-  compliance: z.object({ attested: z.boolean().default(false), test_mode: z.boolean().default(true), allowlist: z.array(z.string()).max(200).default([]) }).default({}),
+  }).prefault({}),
+  compliance: z.object({ attested: z.boolean().default(false), test_mode: z.boolean().default(true), allowlist: z.array(z.string()).max(200).default([]) }).prefault({}),
   product_name: text.default(''), product_description: text.default(''), target_audience: text.default(''), key_benefits: list,
   price_text: text.default(''), price_flexibility: z.enum(['none', 'scripted_discount', 'escalate']).default('none'),
   discount_max_percent: z.number().min(0).max(100).default(0), discount_conditions: text.default(''), offer: text.default(''), offer_expiry: text.default(''),
@@ -38,7 +38,7 @@ export const campaignSchema = z.object({
   experience_range: text.default(''), required_skills: z.array(z.object({ name: text, must_have: z.boolean() })).default([]), nice_to_have: list,
   salary_range_text: text.default(''), notice_period_preference: text.default(''), role_summary: text.default(''), interview_process_text: text.default(''),
   screening_questions: z.array(questionSchema).max(20).default([]), eligibility_rules: list,
-  resume_submission: z.object({ channel: z.enum(['whatsapp', 'email', 'link']), value: text, instructions: text, deadline: text.default('') }).default({ channel: 'link', value: '', instructions: '' }),
+  resume_submission: z.object({ channel: z.enum(['whatsapp', 'email', 'link']), value: text, instructions: text, deadline: text.default('') }).prefault({ channel: 'link', value: '', instructions: '' }),
   hiring_contact_name: text.default(''), destination_ids: z.array(z.string().uuid()).default([]), sample: z.boolean().default(false),
 }).superRefine((c, ctx) => {
   const minute = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultCampaign, campaignSchema } from '../../packages/shared/src/index.js';
-import { agentVersion, CallFlow, complianceGate, eligibility, normalizePhone, opening, percentile, promptBuilder, safeReply, validateFields } from '../../apps/server/src/domain.js';
+import { agentVersion, CallFlow, complianceGate, eligibility, nextCallingWindow, normalizePhone, opening, percentile, promptBuilder, safeReply, validateFields } from '../../apps/server/src/domain.js';
 import { linearToMulaw, pcmToMulaw, mulawToLinearSample, FrameBuffer, sse } from '../../apps/server/src/audio.js';
 import { maskPhone, privateAddress, redactSensitive, webhookSignature } from '../../apps/server/src/security.js';
 const c = defaultCampaign(); c.compliance = { test_mode: true, attested: true, allowlist: ['+12025550101'] };
@@ -17,6 +17,10 @@ describe('ComplianceGate', () => {
   });
   it('honors 09:00 inclusive and 21:00 exclusive IST boundaries', () => {
     for (const [time, allowed] of [['03:29:59', false], ['03:30:00', true], ['15:29:59', true], ['15:30:00', false]] as const) expect(complianceGate(c, '+12025550101', { ...context, now: new Date(`2026-11-07T${time}Z`) }).length === 0).toBe(allowed);
+  });
+  it('deferred calls return to the next allowed window', () => {
+    expect(nextCallingWindow(c, new Date('2026-11-07T02:00:00Z')).toISOString()).toBe('2026-11-07T03:30:00.000Z');
+    expect(nextCallingWindow(c, new Date('2026-11-07T16:00:00Z')).toISOString()).toBe('2026-11-08T03:30:00.000Z');
   });
   it('schema rejects invalid minutes, widened window and duplicate field keys', () => {
     expect(campaignSchema.safeParse({ ...c, schedule: { ...c.schedule, start: '09:90' } }).success).toBe(false);

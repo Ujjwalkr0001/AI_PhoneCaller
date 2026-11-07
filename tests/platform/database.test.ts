@@ -16,6 +16,7 @@ let platform: Platform, app: Awaited<ReturnType<typeof buildApp>>, cookie = '', 
 const email = `synthetic-${org}@example.test`;
 beforeAll(async () => {
   vi.stubEnv('DATABASE_URL', url); vi.stubEnv('MOCK_MODE', 'true'); vi.stubEnv('PUBLIC_BASE_URL', 'http://localhost:3000');
+  vi.stubEnv('SESSION_SECRET', 'synthetic-test-cookie-secret-at-least-32-characters');
   await store.pool.query(await readFile('apps/server/migrations/001_initial.sql', 'utf8'));
   await store.pool.query('insert into users(org_id,email,password_hash,data) values($1,$2,$3,$4)', [org, email, await argon2.hash('synthetic-test-password'), { role: 'admin' }]);
   platform = new Platform(store); await platform.start(); app = await buildApp(store, platform);
@@ -32,11 +33,23 @@ const headers = () => ({ cookie, 'x-csrf-token': csrf, 'idempotency-key': random
 describe('Postgres + authenticated API', () => {
   it('health is public but data, metrics, browser WS are authenticated', async () => { expect((await app.inject('/healthz')).statusCode).toBe(200); for (const path of ['/api/v1/campaigns', '/metrics', '/ws/browser/' + randomUUID()]) expect((await app.inject(path)).statusCode).toBe(401); });
   it('login cookie is httpOnly, SameSite strict; stored token is hashed', async () => {
-    const token = cookie.split('=')[1]; const stored = (await store.pool.query('select token_hash from sessions where org_id=$1', [org])).rows[0]; expect(stored.token_hash).toBe(hashToken(token)); expect(stored.token_hash).not.toBe(token);
+    const token = decodeURIComponent(cookie.split('=')[1]).split('.')[0]; const stored = (await store.pool.query('select token_hash from sessions where org_id=$1', [org])).rows[0]; expect(stored.token_hash).toBe(hashToken(token)); expect(stored.token_hash).not.toBe(token);
   });
   it('missing CSRF and invalid origins cannot mutate', async () => {
     expect((await app.inject({ method: 'POST', url: '/api/v1/campaigns', headers: { cookie }, payload: defaultCampaign() })).statusCode).toBe(403);
     expect((await app.inject({ method: 'POST', url: '/api/v1/auth/login', headers: { origin: 'https://evil.example' }, payload: { email, password: 'synthetic-test-password' } })).statusCode).toBe(403);
+  });
+  it('tampered signed session cookie is rejected', async () => {
+    expect((await app.inject({ url: '/api/v1/campaigns', headers: { cookie: cookie + 'tampered' } })).statusCode).toBe(401);
+  });
+  it('browser calls reserve usage and fail closed on global caps or kill switch', async () => {
+    const c = await store.put('campaigns', org, { ...defaultCampaign(), status: 'draft' });
+    const settings = await store.put('settings', org, { global_daily_tts_chars: 1 });
+    const transport = { audio() {}, clear() {}, async mark() {}, async end() {} };
+    await expect(platform.browserCall(org, c.id, transport)).rejects.toThrow('usage cap');
+    await store.put('settings', org, { kill_switch: true }, settings.id);
+    await expect(platform.browserCall(org, c.id, transport)).rejects.toThrow('paused');
+    await store.remove('settings', org, settings.id);
   });
   it('org isolation applies to list, get and update', async () => {
     const foreign = await store.put('campaigns', other, { ...defaultCampaign(), status: 'draft' });

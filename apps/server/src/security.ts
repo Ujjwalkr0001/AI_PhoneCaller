@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { request as httpsRequest } from 'node:https';
 import argon2 from 'argon2';
 import twilio from 'twilio';
 import { z } from 'zod';
@@ -24,7 +25,8 @@ export async function seedAdmin(store: Store) {
   await store.pool.query('insert into users(org_id,email,password_hash,data) values($1,$2,$3,$4) on conflict(email) do nothing', [demoOrg, email.toLowerCase(), await argon2.hash(password, { type: argon2.argon2id }), { role: 'admin' }]);
 }
 export async function authenticate(req: FastifyRequest, store: Store): Promise<UserSession | undefined> {
-  const token = req.cookies.session;
+  const raw = req.cookies.session;
+  const token = raw && process.env.SESSION_SECRET ? req.unsignCookie(raw).value : raw;
   if (!token) return;
   const result = await store.pool.query('select s.id,s.org_id,s.data,u.data as user_data,u.email,u.id as user_id from sessions s join users u on (s.data->>\'user_id\')::uuid=u.id where s.token_hash=$1 and s.expires_at>now() and s.org_id=u.org_id', [hashToken(token)]);
   const row = result.rows[0];
@@ -41,7 +43,7 @@ export async function authRoutes(app: FastifyInstance, store: Store) {
     if (!user || !valid) return reply.code(401).send({ error: 'Invalid email or password' });
     const token = randomBytes(32).toString('hex'), csrf = randomBytes(32).toString('hex');
     await store.pool.query("insert into sessions(org_id,token_hash,expires_at,data) values($1,$2,now()+interval '12 hours',$3)", [user.org_id, hashToken(token), { user_id: user.id, csrf }]);
-    reply.setCookie('session', token, { path: '/', httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', maxAge: 43200 });
+    reply.setCookie('session', token, { path: '/', httpOnly: true, secure: process.env.NODE_ENV === 'production', signed: !!process.env.SESSION_SECRET, sameSite: 'strict', maxAge: 43200 });
     return { email: user.email, role: user.data.role, csrf };
   });
   app.get('/api/v1/auth/me', async req => ({ email: req.user!.email, role: req.user!.role, csrf: req.user!.csrf }));
@@ -61,6 +63,19 @@ export async function safeDestination(url: string) {
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port && parsed.port !== '443') throw new Error('Public HTTPS destination required');
   const addresses = await lookup(parsed.hostname, { all: true });
   if (!addresses.length || addresses.some(({ address }) => privateAddress(address))) throw new Error('Private or reserved destinations are blocked');
+  return { parsed, addresses };
+}
+export async function postPublicWebhook(url: string, body: string, headers: Record<string, string>) {
+  const { parsed, addresses } = await safeDestination(url);
+  // Pin connection to the vetted address; keep original TLS SNI/Host. No redirect or DNS rebinding hop.
+  await new Promise<void>((resolve, reject) => {
+    const req = httpsRequest({ hostname: addresses[0].address, port: 443, servername: parsed.hostname, path: parsed.pathname + parsed.search,
+      method: 'POST', agent: false, timeout: 10000, headers: { ...headers, Host: parsed.host, 'Content-Length': Buffer.byteLength(body) } }, response => {
+      response.resume();
+      if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) resolve(); else reject(new Error('Webhook receiver rejected delivery'));
+    });
+    req.on('timeout', () => req.destroy(new Error('Webhook timeout'))); req.on('error', reject); req.end(body);
+  });
 }
 export function privateAddress(ip: string) {
   if (isIP(ip) === 6) return !/^[23]/.test(ip); // Only global unicast; disallow mapped IPv4 and local ranges.

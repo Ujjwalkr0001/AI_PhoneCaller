@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
+import { openApi } from './openapi.js';
 import twilio from 'twilio';
 import type { WebSocket } from 'ws';
 import { campaignSchema, contactSchema, destinationSchema, voices, languages, type CallResult, type Destination } from '../../../packages/shared/src/index.js';
@@ -19,6 +19,8 @@ import { normalizePhone, percentile } from './domain.js';
 import { mulawToPcm16le } from './audio.js';
 import type { Transport } from './contracts.js';
 import type { ConversationPipeline } from './pipeline.js';
+import { GnaniTtsClient } from './providers/gnani.js';
+import { pcm16ToWav } from './audio.js';
 
 const idSchema = z.object({ id: z.string().uuid() });
 const csv = (value: unknown) => { let s = typeof value === 'string' ? value : JSON.stringify(value ?? ''); if (/^[=+@\-\t\r]/.test(s)) s = `'${s}`; return `"${s.replace(/"/g, '""')}"`; };
@@ -42,13 +44,13 @@ export async function buildApp(store: Store, platform: Platform) {
     level: process.env.LOG_LEVEL ?? 'info', redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]', 'password', '*.password', '*.phone', '*.email'],
     serializers: { req: req => ({ method: req.method, url: String(req.url ?? '').split('?')[0] }), err: err => ({ type: err.name, message: maskPhone(err.message ?? 'Error'), stack: '' }) },
   }, disableRequestLogging: true });
-  await app.register(cookie); await app.register(formbody); await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
+  await app.register(cookie, { secret: process.env.SESSION_SECRET }); await app.register(formbody); await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
   await app.register(websocket, { options: { maxPayload: 65536 } });
   app.addHook('onRequest', async (req, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff').header('X-Frame-Options', 'DENY').header('Referrer-Policy', 'same-origin');
     if (process.env.NODE_ENV === 'production') reply.header('Strict-Transport-Security', 'max-age=31536000');
     reply.header('Content-Security-Policy', "default-src 'self'; connect-src 'self' ws: wss:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; script-src 'self'; frame-ancestors 'none'");
-    const path = req.url.split('?')[0];
+    const path = req.routeOptions.url ?? req.url.split('?')[0];
     if (!(path.startsWith('/api/') || path.startsWith('/ws/') || path === '/metrics')) return;
     reply.header('Cache-Control', 'no-store');
     if (path === '/api/v1/auth/login') {
@@ -85,6 +87,7 @@ export async function buildApp(store: Store, platform: Platform) {
   app.put('/api/v1/campaigns/:id', async req => {
     const { id } = idSchema.parse(req.params), c = campaignSchema.parse(req.body), old = await store.get<CampaignData>('campaigns', req.user!.org_id, id);
     if (!old) throw new Error('Campaign not found'); if (old.data.status === 'running') throw new Error('Pause campaign before editing');
+    if (c.type !== old.data.type) throw new Error('Campaign workflow cannot change; create a new campaign');
     return store.put('campaigns', req.user!.org_id, { ...c, status: old.data.status }, id);
   });
   app.post('/api/v1/campaigns/:id/:action', async req => {
@@ -108,13 +111,24 @@ export async function buildApp(store: Store, platform: Platform) {
     await store.audit(org, 'campaign.deleted', id); return { ok: true };
   });
   app.get('/api/v1/contacts', async req => { const { campaign_id } = z.object({ campaign_id: z.string().uuid().optional() }).parse(req.query); return (await store.list<ContactData>('contacts', req.user!.org_id)).filter(c => !campaign_id || c.data.campaign_id === campaign_id); });
+  app.post('/api/v1/contacts/validate', async req => {
+    const rows = z.array(contactSchema).max(Number(process.env.MAX_CONTACT_ROWS ?? 200)).parse(req.body), suppressed = await store.list<{ phone: string }>('suppression', req.user!.org_id), seen = new Set<string>();
+    return rows.map((r, index) => { const phone = normalizePhone(r.phone), status = !phone ? 'invalid' : seen.has(phone) ? 'duplicate' : suppressed.some(s => s.data.phone === phone) ? 'suppressed' : 'valid'; if (phone) seen.add(phone); return { index, status }; });
+  });
+  app.post('/api/v1/voice-preview', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (req, reply) => {
+    if (platform.simulation) return reply.code(400).send({ error: 'Voice preview needs live Gnani configuration. Simulation TTS is silent.' });
+    const { voice, language } = z.object({ voice: z.enum(voices), language: z.enum(languages) }).parse(req.body);
+    const chunks = []; for await (const chunk of new GnaniTtsClient().synthesize('Hello, I am an AI assistant.', language, voice, AbortSignal.timeout(15000))) chunks.push(mulawToPcm16le(chunk));
+    return reply.type('audio/wav').send(pcm16ToWav(Buffer.concat(chunks), 8000));
+  });
   app.post('/api/v1/campaigns/:id/contacts', async req => {
     const org = req.user!.org_id, { id } = idSchema.parse(req.params);
     if (!await store.get('campaigns', org, id)) throw new Error('Campaign not found');
     const rows = z.array(contactSchema).min(1).max(Number(process.env.MAX_CONTACT_ROWS ?? 200)).parse(req.body);
     const existing = await store.list<ContactData>('contacts', org), suppressed = await store.list<{ phone: string }>('suppression', org);
-    if (existing.filter(c => c.data.campaign_id === id).length + rows.length > Number(process.env.MAX_CONTACT_ROWS ?? 200)) throw new Error('Campaign contact cap exceeded');
     const seen = new Set(existing.filter(c => c.data.campaign_id === id).map(c => c.data.phone));
+    const incomingNew = new Set(rows.map(r => normalizePhone(r.phone)).filter((p): p is NonNullable<typeof p> => !!p && !seen.has(p)));
+    if (seen.size + incomingNew.size > Number(process.env.MAX_CONTACT_ROWS ?? 200)) throw new Error('Campaign contact cap exceeded');
     const report = [];
     for (const [index, row] of rows.entries()) {
       const phone = normalizePhone(row.phone);
@@ -163,7 +177,7 @@ export async function buildApp(store: Store, platform: Platform) {
   });
   app.get('/api/v1/settings', async req => (await store.list('settings', req.user!.org_id))[0]?.data ?? { retention_days: 30, kill_switch: false, global_daily_minutes: 200, rates: {} });
   app.put('/api/v1/settings', async req => {
-    const s = z.object({ retention_days: z.number().int().min(1).max(365), kill_switch: z.boolean(), global_daily_minutes: z.number().positive().max(10000), rates: z.record(z.number().nonnegative()).default({}) }).parse(req.body), old = (await store.list('settings', req.user!.org_id))[0];
+    const s = z.object({ retention_days: z.number().int().min(1).max(365), kill_switch: z.boolean(), global_daily_minutes: z.number().positive().max(10000), global_daily_stt_seconds: z.number().positive().default(12000), global_daily_tts_chars: z.number().positive().default(200000), rates: z.record(z.string(), z.number().nonnegative()).prefault({}) }).parse(req.body), old = (await store.list('settings', req.user!.org_id))[0];
     await store.put('settings', req.user!.org_id, s, old?.id); await store.audit(req.user!.org_id, 'settings.updated', old?.id ?? 'settings'); return s;
   });
   app.get('/api/v1/team', async req => (await store.pool.query('select id,email,data from users where org_id=$1', [req.user!.org_id])).rows);
@@ -180,9 +194,12 @@ export async function buildApp(store: Store, platform: Platform) {
         days: group(rows.map(r => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(r.at)))),
         today: rows.filter(r => new Date(r.at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) === new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })).length };
     };
-    return { real: summarize(live), sample: summarize(sample), active: platform.active.size, estimated_cost: null, estimate_note: 'Configure rates before estimating; provider bills are authoritative.' };
+    const settings = (await store.list<{ rates?: Record<string, number> }>('settings', req.user!.org_id))[0]?.data, rates = settings?.rates;
+    const configured = rates && ['stt_per_minute', 'tts_per_1000_chars', 'llm_per_1000_tokens', 'telephony_per_minute'].every(k => typeof rates[k] === 'number');
+    const estimate = configured ? live.reduce((total, r) => total + r.usage.stt_seconds / 60 * rates.stt_per_minute + r.usage.tts_chars / 1000 * rates.tts_per_1000_chars + r.usage.llm_tokens / 1000 * rates.llm_per_1000_tokens + r.usage.telephony_minutes * rates.telephony_per_minute, 0) : null;
+    return { real: summarize(live), sample: summarize(sample), active: platform.active.size, estimated_cost: estimate, estimate_note: 'Operator-supplied INR rate table; estimate only. Provider bills are authoritative.' };
   });
-  app.get('/api/v1/openapi.json', async () => ({ openapi: '3.0.3', info: { title: 'Campaign Studio API', version: '1.0.0' }, components: { schemas: { Campaign: zodToJsonSchema(campaignSchema), Contact: zodToJsonSchema(contactSchema), Destination: zodToJsonSchema(destinationSchema) }, securitySchemes: { cookieAuth: { type: 'apiKey', in: 'cookie', name: 'session' } } }, security: [{ cookieAuth: [] }], paths: { '/api/v1/campaigns': { get: { responses: { '200': { description: 'Org-scoped campaigns' } } }, post: { requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Campaign' } } } }, responses: { '200': { description: 'Created campaign' } } } } } }));
+  app.get('/api/v1/openapi.json', async () => openApi());
 
   app.get('/ws/monitor', { websocket: true }, (ws, req) => { platform.monitors.set(ws, req.user!.org_id); ws.send(JSON.stringify({ type: 'connected', simulation: platform.simulation })); ws.on('close', () => platform.monitors.delete(ws)); });
   app.get('/ws/browser/:id', { websocket: true }, (ws, req) => {
@@ -195,6 +212,7 @@ export async function buildApp(store: Store, platform: Platform) {
         if (message.type === 'start' && !started) {
           started = true;
           const { call, pipeline: p } = await platform.browserCall(req.user!.org_id, z.object({ id: z.string().uuid() }).parse(req.params).id, transport); pipeline = p;
+          if (ws.readyState !== 1) { await p.finish('FAILED'); return; }
           ws.send(JSON.stringify({ type: 'started', call_id: call.id })); await p.start();
         } else if (message.type === 'mark') transport.ack(message.name ?? '');
         else if (message.type === 'text' && platform.simulation && pipeline) await pipeline.turn({ text: message.text ?? '', finalAt: Date.now() });
@@ -231,7 +249,7 @@ export async function buildApp(store: Store, platform: Platform) {
         if (e.event === 'start' && e.start && !starting) {
           starting = true; const callId = z.string().uuid().parse(e.start.customParameters.call_id);
           const call = (await store.pool.query('select * from calls where id=$1', [callId])).rows[0] as import('../../../packages/shared/src/index.js').Row<CallData> | undefined;
-          if (!call || call.data.sid !== e.start.callSid || e.start.mediaFormat.encoding !== 'audio/x-mulaw' || e.start.mediaFormat.sampleRate !== 8000 || e.start.mediaFormat.channels !== 1) throw new Error('Unexpected stream identity or format');
+          if (!call || ['completed', 'failed'].includes(call.data.status) || platform.active.has(call.id) || call.data.sid !== e.start.callSid || e.start.mediaFormat.encoding !== 'audio/x-mulaw' || e.start.mediaFormat.sampleRate !== 8000 || e.start.mediaFormat.channels !== 1) throw new Error('Unexpected stream identity, state or format');
           streamSid = e.start.streamSid; sid = e.start.callSid;
           const campaign = await store.get<CampaignData>('campaigns', call.org_id, call.data.campaign_id); if (!campaign) throw new Error('Campaign missing');
           pipeline = await platform.createPipeline(call.org_id, campaign, call, transport); await pipeline.start();
@@ -244,7 +262,7 @@ export async function buildApp(store: Store, platform: Platform) {
   });
   const webRoot = resolve('apps/web/dist');
   if (existsSync(webRoot)) {
-    await app.register(staticFiles, { root: webRoot, wildcard: false });
+    await app.register(staticFiles, { root: webRoot, wildcard: true });
     app.setNotFoundHandler((req, reply) => req.method === 'GET' && !/^\/(api|ws|twilio)\//.test(req.url) ? reply.sendFile('index.html') : reply.code(404).send({ error: 'Not found' }));
   }
   return app;

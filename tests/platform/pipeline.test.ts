@@ -26,7 +26,12 @@ describe('full mock pipeline', () => {
   it('substantial Hindi utterance changes the recorded language', async () => { const { p, results } = fixture(); await p.start(); await utter(p, 'हाँ मुझे इस काम के बारे में बताइए', 'hi-IN'); await p.finish(); expect(results[0].languages).toContain('hi-IN'); });
   it('truthfully answers human question and unknown facts', async () => { const { p } = fixture(); await p.start(); await utter(p, 'Are you a robot?'); expect(p.transcript.at(-1)?.text).toContain('AI assistant'); await utter(p, 'What salary guarantee can you offer?'); expect(p.transcript.at(-1)?.text).toContain('follow up'); });
   it('unknown fields return errors to model', async () => { const { p } = fixture(); const result = await p.tool({ name: 'capture_fields', args: { fields: { invented: 'x' } } }, 'yes'); expect(result).toHaveProperty('error'); expect(p.fields).toEqual({}); });
-  it('barge-in flushes outbound playback', async () => { const { p, clear } = fixture(); const start = p.start(); await Promise.resolve(); p.bargeIn(); await start; expect(clear).toHaveBeenCalled(); });
+  it('abusive caller gets graceful exit', async () => { const { p, results } = fixture(); await p.start(); await utter(p, 'Go away'); expect(results[0].outcome).toBe('NOT_INTERESTED'); });
+  it('repeated what/noisy line ends without looping the LLM', async () => { const { p, results } = fixture(); await p.start(); await utter(p, 'What?'); await utter(p, 'I cannot hear you'); expect(results[0].outcome).toBe('NOT_INTERESTED'); });
+  it('idle prompt then graceful timeout, without provider charges', async () => {
+    vi.useFakeTimers(); try { const { p, results } = fixture(); await p.start(); await vi.advanceTimersByTimeAsync(25001); expect(p.transcript.at(-1)?.text).toBe('Are you still there?'); await vi.advanceTimersByTimeAsync(25001); expect(results).toHaveLength(1); } finally { vi.useRealTimers(); }
+  });
+  it('barge-in flushes outbound playback after mandatory disclosure', async () => { const { p, clear } = fixture(); await p.start(); p.transport.mark = async () => { p.bargeIn(); }; await utter(p, 'Yes'); expect(clear).toHaveBeenCalled(); });
 });
 describe('provider failover', () => {
   it('opens circuit after failures and recovers on success', () => { const b = new CircuitBreaker(2, 1000); b.fail(); expect(b.open).toBe(false); b.fail(); expect(b.open).toBe(true); b.success(); expect(b.open).toBe(false); });
