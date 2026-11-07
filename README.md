@@ -19,7 +19,7 @@ Configure sales and HR calling campaigns with Gnani Prisma speech recognition, G
 | Sample data | Fictional companies and reserved synthetic numbers, tagged `sample` | Explicit simulations, excluded from real metrics |
 | Fly image and deployment config | One always-on container; release migration | Local Docker build/smoke; public deploy NOT RUN |
 
-Gnani supplies speech in this custom pipeline; it does **not** decide the dialogue. The UI always names the configured text model. Current Gnani docs also describe Agent Builder APIs, but this application does not use those agents or claim Evon integration.
+Gnani supplies speech in this custom pipeline; it does **not** decide the dialogue. The UI always names the configured text model. Current Gnani docs also describe Agent Builder APIs, but this application does not use those agents or claim Evon integration. The challenge excludes Agent Builder; see [official contest check](docs/CONTEST_RULES.md).
 
 ## Quick start (PowerShell)
 

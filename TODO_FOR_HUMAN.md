@@ -37,12 +37,14 @@ The local build and simulation are implemented. **Live Gnani/Twilio operation an
 - [ ] Team UI lists seeded users; self-service team provisioning/password resets are not implemented. Recording remains disabled. Optional WhatsApp/SMS, Google Sheets, warm transfer and generated FAQs are intentionally omitted.
 - [ ] Consider an AudioWorklet and more rigorous browser resampling/echo evaluation for production audio. Provider token usage and invoice rounding may differ from estimates.
 
-## Submission checklist (brief deadline: 10 Nov 2026, 11:59 PM IST)
+## Submission checklist (official deadline: 10 Nov 2026, 11:59 PM IST)
+
+See [verified contest requirements](docs/CONTEST_RULES.md). Confirm personal eligibility and programme-account access to the implemented model versions.
 
 - [ ] Staging URL live and provider traces prove genuine Gnani speech usage.
 - [ ] Demo recorded with clear live/simulation labels and only synthetic/consented information.
 - [ ] Real LLM held-out evaluation run if reporting metrics; otherwise retain **not run**. Never infer provider accuracy/latency from mocks.
 - [ ] README, SUBMISSION.md, screenshots and claims re-verified against the final repository and actual live evidence.
 - [ ] Contribution table completed with one row per actual human team member; distinguish AI assistance.
-- [ ] Verify official contest rules, required hashtags and exact Gnani account to tag; publish required posts yourself.
+- [ ] Publish the working video with the official tag/hashtags and nominate its links as specified in CONTEST_RULES.md.
 - [ ] Nominate actual post links in the contest form, verify all links and submit before the confirmed deadline.

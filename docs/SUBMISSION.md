@@ -15,6 +15,6 @@ The implementation includes an authenticated React wizard, persistent Fastify/We
 
 **Live Gnani calls, live Twilio calling, real webhook receiver delivery, public staging/prod deployment and held-out real-LLM evaluation have not been run.** Do not remove this paragraph or submit a “live Gnani platform” claim until the human verifies and records those runs. Do not describe mock silent speech as a live voice agent. No accuracy, customer counts, provider latency, billed cost or production capacity number is claimed.
 
-The brief gives a deadline of 10 November 2026, 11:59 PM IST. Human operators must verify the current official challenge rules, required posts/hashtags/tags and nomination form. This file does not submit anything automatically.
+The official deadline and entry requirements are checked in [CONTEST_RULES.md](CONTEST_RULES.md). This file does not submit anything automatically.
 
 Complete public repository/demo URL, team names, contribution table, proof of Gnani usage, held-out results if actually run, and consented test-call evidence before final submission.
