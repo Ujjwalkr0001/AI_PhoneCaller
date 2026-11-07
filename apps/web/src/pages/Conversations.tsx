@@ -28,7 +28,9 @@ export function ConversationList({ campaignId }: { campaignId?: string }) {
     [filter, setFilter] = useState('all'),
     [search, setSearch] = useState(''),
     [selected, setSelected] = useState<ResultRow>();
-  if (rows.isPending) return <Skeleton lines={2} />;
+  if (rows.isPending || contacts.isPending || campaigns.isPending) return <Skeleton lines={2} />;
+  if (contacts.isError || campaigns.isError)
+    return <ErrorState message="We couldn’t load contact details." retry={() => { void contacts.refetch(); void campaigns.refetch(); }} />;
   if (rows.isError)
     return (
       <ErrorState message="We couldn’t load conversations." retry={() => void rows.refetch()} />
@@ -45,10 +47,10 @@ export function ConversationList({ campaignId }: { campaignId?: string }) {
     .filter(
       (r) =>
         filter === 'all' ||
-        (filter === 'interested' && /INTERESTED/.test(r.data.outcome)) ||
-        (filter === 'screened' && /CANDIDATE/.test(r.data.outcome)) ||
+        (filter === 'interested' && /^INTERESTED_/.test(r.data.outcome)) ||
+        (filter === 'screened' && r.data.outcome === 'CANDIDATE_COMPLETED') ||
         (filter === 'callback' && r.data.outcome === 'CALLBACK') ||
-        (filter === 'other' && !/INTERESTED|CANDIDATE|CALLBACK/.test(r.data.outcome)),
+        (filter === 'other' && !/^(INTERESTED_HOT|INTERESTED_WARM|CANDIDATE_COMPLETED|CALLBACK)$/.test(r.data.outcome)),
     )
     .filter((r) => {
       const contact = getContact(r, contacts.data ?? []);

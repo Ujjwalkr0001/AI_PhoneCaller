@@ -110,6 +110,6 @@ export class BrowserAudio {
     this.stream?.getTracks().forEach((t) => t.stop());
     this.processor?.disconnect();
     this.source?.disconnect();
-    void this.context?.close();
+    if (this.context && this.context.state !== 'closed') void this.context.close();
   }
 }

@@ -35,7 +35,8 @@ export function useData<T>(path: string, enabled = true) {
     queryKey: [path],
     queryFn: () => api<T>(path),
     enabled,
-    refetchInterval: 5000,
+    staleTime: 15000,
+    refetchInterval: 30000,
   });
 }
 export async function change<T = unknown>(
@@ -44,8 +45,18 @@ export async function change<T = unknown>(
   body?: unknown,
 ): Promise<T> {
   const result = await api<T>(path, method, body);
-  await query.invalidateQueries();
+  await query.invalidateQueries({ queryKey: [`/${path.split('/')[1]}`] });
+  if (path.startsWith('/destinations/') && path.endsWith('/test'))
+    await query.invalidateQueries({ queryKey: ['/deliveries'] });
   return result;
+}
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+export function refreshResults() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    for (const path of ['/results', '/calls', '/contacts', '/campaigns', '/deliveries'])
+      void query.invalidateQueries({ queryKey: [path] });
+  }, 300);
 }
 export const maskPhone = (s = '') => s.replace(/\d(?=\d{4})/g, '•');
 export const friendly = (s: string) =>

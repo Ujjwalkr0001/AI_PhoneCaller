@@ -69,7 +69,9 @@ export function Chip({ children, tone = 'neutral' }: { children: React.ReactNode
   return <span className={`chip chip-${tone}`}>{children}</span>;
 }
 export function StatusBadge({ status }: { status: string }) {
-  const tone = /^(INTERESTED|COMPLETED|CANDIDATE_SCREENED|running|delivered)$/.test(status)
+  const tone = /^(INTERESTED_HOT|INTERESTED_WARM|CANDIDATE_COMPLETED|running|delivered)$/.test(
+    status,
+  )
     ? 'positive'
     : /CALLBACK|pending|ringing/.test(status)
       ? 'amber'
@@ -147,7 +149,7 @@ export function TagInput({
       <div className="tag-entry">
         <input
           id={id}
-          aria-label="Add a requirement"
+          aria-label={id ? undefined : 'Add a requirement'}
           value={text}
           placeholder={placeholder}
           onChange={(e) => setText(e.target.value)}
