@@ -1,0 +1,37 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_PASSWORD: local-development-only, POSTGRES_DB: caller }
+        ports: ["54329:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:local-development-only@localhost:54329/caller
+      TEST_DATABASE_URL: postgres://postgres:local-development-only@localhost:54329/caller
+      MOCK_MODE: "true"
+      PUBLIC_BASE_URL: http://localhost:3000
+      SEED_ADMIN_EMAIL: demo@example.test
+      SEED_ADMIN_PASSWORD: local-demo-passphrase
+      PW_CHANNEL: chromium
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.28.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod --audit-level=high
+      - run: pnpm typecheck && pnpm lint && pnpm test && pnpm build
+      - run: pnpm db:migrate && pnpm seed
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm start > /tmp/caller.log 2>&1 &
+      - run: node scripts/wait-ready.mjs
+      - run: pnpm test:e2e
+      - run: docker build -t caller-ci .
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: browser-test-artifacts, path: "output/playwright/\ntest-results/" }

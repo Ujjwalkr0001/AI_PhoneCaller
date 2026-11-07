@@ -1,0 +1,13 @@
+{
+  "ran_at": "2026-11-07T08:10:11.918Z",
+  "simulation": true,
+  "scope": "Local 2-second synthetic Twilio Media Streams against silent mocks; NOT live provider capacity or Fly benchmark",
+  "clients": 4,
+  "first_audio_observations": 4,
+  "failures": 0,
+  "connection_to_first_mock_audio_p50_ms": 30.83010000000013,
+  "connection_to_first_mock_audio_p95_ms": 56.91390000000001,
+  "rss_delta_bytes": 856064,
+  "node": "v24.12.0",
+  "platform": "win32"
+}

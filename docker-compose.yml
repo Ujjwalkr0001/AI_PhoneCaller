@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: caller
+      POSTGRES_PASSWORD: local-development-only
+      POSTGRES_DB: caller
+    ports: ["127.0.0.1:54329:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U caller -d caller"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  app:
+    build: .
+    ports: ["127.0.0.1:3000:3000"]
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://caller:local-development-only@postgres:5432/caller
+      PUBLIC_BASE_URL: http://localhost:3000
+      MOCK_MODE: "true"
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-demo@example.test}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-local-demo-passphrase}
+    depends_on:
+      postgres: { condition: service_healthy }
+    command: ["sh", "-c", "node scripts/migrate.mjs && node apps/server/dist/index.js"]
+    stop_grace_period: 45s
+volumes:
+  postgres-data:

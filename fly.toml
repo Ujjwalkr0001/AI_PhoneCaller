@@ -1,0 +1,44 @@
+# Set app to your own unique staging app name before deployment.
+app = "gnani-campaign-studio-staging"
+primary_region = "sin"
+kill_signal = "SIGTERM"
+kill_timeout = "45s"
+
+[build]
+  dockerfile = "Dockerfile"
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  STT_PROVIDER = "gnani"
+  TTS_PROVIDER = "gnani"
+  DRAIN_SECONDS = "25"
+  GLOBAL_CONCURRENCY = "4"
+[deploy]
+  release_command = "node scripts/migrate.mjs"
+  strategy = "rolling"
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 40
+    hard_limit = 60
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    timeout = "5s"
+    method = "GET"
+    path = "/healthz"
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    timeout = "5s"
+    method = "GET"
+    path = "/readyz"
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "1gb"

@@ -25,3 +25,7 @@ Baseline: `58f1cb5`, ElevateBox AI Caller by Ujjwal / original repository contri
 There is no evidence of a working production WebSocket deployment in the repository. Local dev explicitly forwards upgrade requests, while the Vercel handler exports a server object. Vercel documents that Functions do not act as WebSocket servers: https://vercel.com/docs/functions/limitations#websockets . Neither an uptime pinger nor a function duration change fixes this topology.
 
 Inspected source/configuration, scripts, tests and existing static UI; binary architecture image is a reference artifact, and the personal PDF must not be exposed. Existing secret values were not needed. No claim is made that previously reported real-call observations in comments have been independently reproduced.
+
+## Archive after migration
+
+Original `api/` and `vercel.json` now live in `legacy/`, outside provider auto-discovery and the image. Their original paths above describe the audited baseline. The old runtime is not supported.

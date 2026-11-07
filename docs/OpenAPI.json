@@ -1,0 +1,1982 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Campaign Studio",
+    "version": "1.0.0",
+    "description": "Org-scoped API. JSONB payload contracts generated from shared Zod schemas; additional route bodies documented in docs/API.md."
+  },
+  "components": {
+    "schemas": {
+      "Campaign": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 120
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "sales",
+              "hr"
+            ]
+          },
+          "company_name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120
+          },
+          "company_about": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "website": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uri"
+              },
+              {
+                "type": "string",
+                "const": ""
+              }
+            ]
+          },
+          "languages": {
+            "default": [
+              "en-IN"
+            ],
+            "minItems": 1,
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "en-IN",
+                "hi-IN",
+                "te-IN",
+                "ta-IN",
+                "kn-IN",
+                "ml-IN",
+                "mr-IN",
+                "pa-IN",
+                "bn-IN",
+                "gu-IN"
+              ]
+            }
+          },
+          "agent_persona": {
+            "default": {
+              "name": "Mira",
+              "tone": "friendly"
+            },
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "tone": {
+                "type": "string",
+                "enum": [
+                  "formal",
+                  "friendly",
+                  "energetic"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "tone"
+            ],
+            "additionalProperties": false
+          },
+          "voice": {
+            "default": {
+              "en-IN": "Shivani"
+            },
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "enum": [
+                "en-IN",
+                "hi-IN",
+                "te-IN",
+                "ta-IN",
+                "kn-IN",
+                "ml-IN",
+                "mr-IN",
+                "pa-IN",
+                "bn-IN",
+                "gu-IN"
+              ]
+            },
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "Shivani",
+                "Avinash",
+                "Lakshmi",
+                "Kalpana",
+                "Shubham",
+                "Prakash",
+                "Devansh",
+                "Yashraj",
+                "Chetana",
+                "Vasudha",
+                "Riyaa",
+                "Tarika",
+                "Harshad"
+              ]
+            }
+          },
+          "opening_style": {
+            "default": "Brief and respectful",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "callback_number_or_contact": {
+            "default": "The team will follow up",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "handoff": {
+            "default": "callback",
+            "type": "string",
+            "enum": [
+              "none",
+              "callback"
+            ]
+          },
+          "fact_sheet": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "key_facts": {
+            "default": [],
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 5000
+            }
+          },
+          "faqs": {
+            "default": [],
+            "maxItems": 30,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "q": {
+                  "type": "string",
+                  "maxLength": 5000
+                },
+                "a": {
+                  "type": "string",
+                  "maxLength": 5000
+                }
+              },
+              "required": [
+                "q",
+                "a"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "do_not_say": {
+            "default": [],
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 5000
+            }
+          },
+          "max_call_duration_s": {
+            "default": 240,
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 600
+          },
+          "recording": {
+            "default": false,
+            "type": "boolean",
+            "const": false
+          },
+          "schedule": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "default": "09:00",
+                "type": "string",
+                "pattern": "^\\d{2}:\\d{2}$"
+              },
+              "end": {
+                "default": "21:00",
+                "type": "string",
+                "pattern": "^\\d{2}:\\d{2}$"
+              },
+              "timezone": {
+                "default": "Asia/Kolkata",
+                "type": "string",
+                "const": "Asia/Kolkata"
+              },
+              "max_attempts": {
+                "default": 2,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2
+              },
+              "retry_gap_min": {
+                "default": 60,
+                "type": "integer",
+                "minimum": 30,
+                "maximum": 9007199254740991
+              },
+              "concurrency": {
+                "default": 2,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10
+              },
+              "daily_cap": {
+                "default": 50,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200
+              },
+              "daily_minutes": {
+                "default": 100,
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000
+              },
+              "daily_stt_seconds": {
+                "default": 6000,
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "daily_tts_chars": {
+                "default": 100000,
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "start",
+              "end",
+              "timezone",
+              "max_attempts",
+              "retry_gap_min",
+              "concurrency",
+              "daily_cap",
+              "daily_minutes",
+              "daily_stt_seconds",
+              "daily_tts_chars"
+            ],
+            "additionalProperties": false
+          },
+          "compliance": {
+            "type": "object",
+            "properties": {
+              "attested": {
+                "default": false,
+                "type": "boolean"
+              },
+              "test_mode": {
+                "default": true,
+                "type": "boolean"
+              },
+              "allowlist": {
+                "default": [],
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "attested",
+              "test_mode",
+              "allowlist"
+            ],
+            "additionalProperties": false
+          },
+          "product_name": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "product_description": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "target_audience": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "key_benefits": {
+            "default": [],
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 5000
+            }
+          },
+          "price_text": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "price_flexibility": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "none",
+              "scripted_discount",
+              "escalate"
+            ]
+          },
+          "discount_max_percent": {
+            "default": 0,
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "discount_conditions": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "offer": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "offer_expiry": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "call_goal": {
+            "default": "collect interest",
+            "type": "string",
+            "enum": [
+              "book demo",
+              "collect interest",
+              "schedule callback",
+              "direct sale link"
+            ]
+          },
+          "qualification_questions": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 500
+                },
+                "field_key": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,39}$"
+                },
+                "required": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "must_have": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "expected_answer_hint": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 5000
+                }
+              },
+              "required": [
+                "question",
+                "field_key",
+                "required",
+                "must_have",
+                "expected_answer_hint"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "objection_playbook": {
+            "default": [],
+            "maxItems": 30,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "objection": {
+                  "type": "string",
+                  "maxLength": 5000
+                },
+                "response": {
+                  "type": "string",
+                  "maxLength": 5000
+                }
+              },
+              "required": [
+                "objection",
+                "response"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "disqualifiers": {
+            "default": [],
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 5000
+            }
+          },
+          "cta": {
+            "default": "Ask permission for the team to follow up",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "follow_up_message_template": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "job_title": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "job_listing_ref": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "department": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "location": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "work_mode": {
+            "default": "hybrid",
+            "type": "string",
+            "enum": [
+              "onsite",
+              "hybrid",
+              "remote"
+            ]
+          },
+          "employment_type": {
+            "default": "Full-time",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "openings": {
+            "default": 1,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "experience_range": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "required_skills": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 5000
+                },
+                "must_have": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "must_have"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nice_to_have": {
+            "default": [],
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 5000
+            }
+          },
+          "salary_range_text": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "notice_period_preference": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "role_summary": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "interview_process_text": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "screening_questions": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 500
+                },
+                "field_key": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,39}$"
+                },
+                "required": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "must_have": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "expected_answer_hint": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 5000
+                }
+              },
+              "required": [
+                "question",
+                "field_key",
+                "required",
+                "must_have",
+                "expected_answer_hint"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "eligibility_rules": {
+            "default": [],
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 5000
+            }
+          },
+          "resume_submission": {
+            "type": "object",
+            "properties": {
+              "channel": {
+                "type": "string",
+                "enum": [
+                  "whatsapp",
+                  "email",
+                  "link"
+                ]
+              },
+              "value": {
+                "type": "string",
+                "maxLength": 5000
+              },
+              "instructions": {
+                "type": "string",
+                "maxLength": 5000
+              },
+              "deadline": {
+                "default": "",
+                "type": "string",
+                "maxLength": 5000
+              }
+            },
+            "required": [
+              "channel",
+              "value",
+              "instructions",
+              "deadline"
+            ],
+            "additionalProperties": false
+          },
+          "hiring_contact_name": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "destination_ids": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "sample": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "company_name",
+          "company_about",
+          "languages",
+          "agent_persona",
+          "voice",
+          "opening_style",
+          "callback_number_or_contact",
+          "handoff",
+          "fact_sheet",
+          "key_facts",
+          "faqs",
+          "do_not_say",
+          "max_call_duration_s",
+          "recording",
+          "schedule",
+          "compliance",
+          "product_name",
+          "product_description",
+          "target_audience",
+          "key_benefits",
+          "price_text",
+          "price_flexibility",
+          "discount_max_percent",
+          "discount_conditions",
+          "offer",
+          "offer_expiry",
+          "call_goal",
+          "qualification_questions",
+          "objection_playbook",
+          "disqualifiers",
+          "cta",
+          "follow_up_message_template",
+          "job_title",
+          "job_listing_ref",
+          "department",
+          "location",
+          "work_mode",
+          "employment_type",
+          "openings",
+          "experience_range",
+          "required_skills",
+          "nice_to_have",
+          "salary_range_text",
+          "notice_period_preference",
+          "role_summary",
+          "interview_process_text",
+          "screening_questions",
+          "eligibility_rules",
+          "resume_submission",
+          "hiring_contact_name",
+          "destination_ids",
+          "sample"
+        ],
+        "additionalProperties": false
+      },
+      "Contact": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "phone": {
+            "type": "string",
+            "maxLength": 30
+          },
+          "first_name": {
+            "default": "",
+            "type": "string",
+            "maxLength": 80
+          },
+          "candidate_name": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "current_role": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "source": {
+            "default": "",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "en-IN",
+              "hi-IN",
+              "te-IN",
+              "ta-IN",
+              "kn-IN",
+              "ml-IN",
+              "mr-IN",
+              "pa-IN",
+              "bn-IN",
+              "gu-IN"
+            ]
+          },
+          "sample": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "phone",
+          "first_name",
+          "candidate_name",
+          "current_role",
+          "source",
+          "sample"
+        ],
+        "additionalProperties": false
+      },
+      "ContactList": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Contact"
+        }
+      },
+      "Destination": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100
+          },
+          "kind": {
+            "type": "string",
+            "const": "webhook"
+          },
+          "url": {
+            "type": "string",
+            "format": "starts_with",
+            "pattern": "^https:\\/\\/.*"
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "url",
+          "enabled"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "session"
+      }
+    }
+  },
+  "security": [
+    {
+      "cookieAuth": []
+    }
+  ],
+  "paths": {
+    "/api/v1/campaigns": {
+      "get": {
+        "summary": "GET /campaigns",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST /campaigns",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Campaign"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{id}": {
+      "get": {
+        "summary": "GET /campaigns/{id}",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      },
+      "put": {
+        "summary": "PUT /campaigns/{id}",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Campaign"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE /campaigns/{id}",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{id}/launch": {
+      "post": {
+        "summary": "POST /campaigns/{id}/launch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{id}/pause": {
+      "post": {
+        "summary": "POST /campaigns/{id}/pause",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{id}/resume": {
+      "post": {
+        "summary": "POST /campaigns/{id}/resume",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{id}/stop": {
+      "post": {
+        "summary": "POST /campaigns/{id}/stop",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{id}/contacts": {
+      "post": {
+        "summary": "POST /campaigns/{id}/contacts",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactList"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/contacts": {
+      "get": {
+        "summary": "GET /contacts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/validate": {
+      "post": {
+        "summary": "POST /contacts/validate",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactList"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/{id}": {
+      "delete": {
+        "summary": "DELETE /contacts/{id}",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/calls": {
+      "get": {
+        "summary": "GET /calls",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/calls/{id}": {
+      "get": {
+        "summary": "GET /calls/{id}",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE /calls/{id}",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/results": {
+      "get": {
+        "summary": "GET /results",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/results/export": {
+      "get": {
+        "summary": "GET /results/export",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "UTF-8 CSV download"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/suppression": {
+      "get": {
+        "summary": "GET /suppression",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST /suppression",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/suppression/{id}": {
+      "delete": {
+        "summary": "DELETE /suppression/{id}",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/destinations": {
+      "get": {
+        "summary": "GET /destinations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST /destinations",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Destination"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/destinations/{id}": {
+      "delete": {
+        "summary": "DELETE /destinations/{id}",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/destinations/{id}/test": {
+      "post": {
+        "summary": "POST /destinations/{id}/test",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/deliveries": {
+      "get": {
+        "summary": "GET /deliveries",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/deliveries/{id}/retry": {
+      "post": {
+        "summary": "POST /deliveries/{id}/retry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "summary": "GET /settings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      },
+      "put": {
+        "summary": "PUT /settings",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/team": {
+      "get": {
+        "summary": "GET /team",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/audit-log": {
+      "get": {
+        "summary": "GET /audit-log",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/providers": {
+      "get": {
+        "summary": "GET /providers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics": {
+      "get": {
+        "summary": "GET /analytics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "summary": "GET /auth/me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "summary": "POST /auth/logout",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/voice-preview": {
+      "post": {
+        "summary": "POST /voice-preview",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "summary": "GET /openapi.json",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or gate failure"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Role/CSRF check failed"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "security": [],
+        "summary": "Email/password login; rate limited",
+        "responses": {
+          "200": {
+            "description": "Sets httpOnly session cookie; returns CSRF token, role, email"
+          },
+          "401": {
+            "description": "Invalid credentials"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Healthy/ready"
+          },
+          "503": {
+            "description": "Not ready"
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Healthy/ready"
+          },
+          "503": {
+            "description": "Not ready"
+          }
+        }
+      }
+    }
+  }
+}
