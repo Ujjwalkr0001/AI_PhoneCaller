@@ -11,5 +11,12 @@ try {
     await client.query(await readFile('apps/server/migrations/001_initial.sql', 'utf8'));
     await client.query('commit');
     console.log('Database migration applied');
-  } catch (error) { await client.query('rollback'); throw error; } finally { client.release(); }
-} finally { await store.pool.end(); }
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+} finally {
+  await store.pool.end();
+}

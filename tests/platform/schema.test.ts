@@ -4,12 +4,16 @@ describe('campaign contract', () => {
   it('safe defaults for either workflow', () => {
     for (const type of ['sales', 'hr'] as const) {
       const c = defaultCampaign(type);
-      expect(c.compliance.test_mode).toBe(true); expect(c.compliance.attested).toBe(false); expect(c.recording).toBe(false);
+      expect(c.compliance.test_mode).toBe(true);
+      expect(c.compliance.attested).toBe(false);
+      expect(c.recording).toBe(false);
     }
   });
   it('rejects wider calling windows and recording without consent implementation', () => {
     const c = defaultCampaign();
-    expect(campaignSchema.safeParse({ ...c, schedule: { ...c.schedule, start: '08:59' } }).success).toBe(false);
+    expect(
+      campaignSchema.safeParse({ ...c, schedule: { ...c.schedule, start: '08:59' } }).success,
+    ).toBe(false);
     expect(campaignSchema.safeParse({ ...c, recording: true }).success).toBe(false);
   });
 });
