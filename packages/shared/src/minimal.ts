@@ -28,7 +28,9 @@ export const minimalBaseSchema = z.object({
   company_name: z.string().trim().max(120),
   offering: z.string().trim().max(5000).default(''),
   price: z.string().trim().max(500).default(''),
-  goal: z.enum(['collect interest', 'book demo', 'schedule callback']).default('collect interest'),
+  goal: z
+    .enum(['collect interest', 'book demo', 'schedule callback', 'direct sale link'])
+    .default('collect interest'),
   languages: z
     .array(languageSchema)
     .min(1, 'Choose at least one language.')
@@ -48,7 +50,7 @@ export const minimalBaseSchema = z.object({
       ]),
     )
     .default(['notice_period', 'interview_availability', 'relevant_experience']),
-  custom_questions: z.array(questionSchema).max(8).default([]),
+  custom_questions: z.array(questionSchema).max(20).default([]),
   resume_channel: z.enum(['whatsapp', 'email', 'link']).default('link'),
   resume_value: z.string().trim().max(500).default(''),
   pay_range: z.string().trim().max(500).default(''),
@@ -167,6 +169,7 @@ export function expandToFullConfig(
     salary_range_text: d.pay_range,
     role_summary:
       advanced.role_summary ||
+      (options.base ? base.role_summary : '') ||
       (d.type === 'hr'
         ? [d.job_title, d.location, d.work_mode, ...d.requirements].filter(Boolean).join('. ')
         : ''),
@@ -175,24 +178,32 @@ export function expandToFullConfig(
       ...presetQuestions,
       ...d.custom_questions,
     ],
-    qualification_questions: advanced.qualification_questions ?? [
-      {
-        question: 'What would you like the team to follow up on?',
-        field_key: 'interest_details',
-        required: false,
-        must_have: false,
-        expected_answer_hint: '',
-      },
-    ],
+    qualification_questions:
+      advanced.qualification_questions ??
+      (options.base
+        ? base.qualification_questions
+        : [
+            {
+              question: 'What would you like the team to follow up on?',
+              field_key: 'interest_details',
+              required: false,
+              must_have: false,
+              expected_answer_hint: '',
+            },
+          ]),
     fact_sheet: advanced.fact_sheet ?? (options.base ? base.fact_sheet : facts.join('\n')),
     resume_submission: {
       ...base.resume_submission,
       channel: d.resume_channel,
       value: d.resume_value,
       instructions:
-        advanced.resume_submission?.instructions ||
-        (d.resume_value ? `Submit your resume here: ${d.resume_value}` : ''),
-      deadline: advanced.resume_submission?.deadline ?? '',
+        advanced.resume_submission?.instructions ??
+        (options.base && d.resume_value === base.resume_submission.value
+          ? base.resume_submission.instructions
+          : d.resume_value
+            ? `Submit your resume here: ${d.resume_value}`
+            : ''),
+      deadline: advanced.resume_submission?.deadline ?? base.resume_submission.deadline,
     },
     schedule: { ...base.schedule, ...advanced.schedule, start: d.start, end: d.end },
     compliance: {
@@ -218,7 +229,7 @@ export function minimalFromFull(c: Campaign): CampaignDraftMinimal {
     company_name: c.company_name,
     offering: c.product_description || c.product_name,
     price: c.price_text,
-    goal: c.call_goal === 'direct sale link' ? 'collect interest' : c.call_goal,
+    goal: c.call_goal,
     languages: c.languages,
     job_title: c.job_title,
     location: c.location,

@@ -42,7 +42,16 @@ export default function CampaignPage() {
   if (campaign.isPending) return <Skeleton />;
   if (contacts.isPending || results.isPending || calls.isPending) return <Skeleton />;
   if (contacts.isError || results.isError || calls.isError)
-    return <ErrorState message="We couldn’t load the campaign activity." retry={() => { void contacts.refetch(); void results.refetch(); void calls.refetch(); }} />;
+    return (
+      <ErrorState
+        message="We couldn’t load the campaign activity."
+        retry={() => {
+          void contacts.refetch();
+          void results.refetch();
+          void calls.refetch();
+        }}
+      />
+    );
   if (campaign.isError || !campaign.data)
     return (
       <ErrorState message="We couldn’t load this campaign." retry={() => void campaign.refetch()} />

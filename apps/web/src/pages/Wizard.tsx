@@ -64,6 +64,7 @@ interface SavedDraft {
   advanced: Partial<Campaign>;
   step: number;
   savedId?: string;
+  drafted?: boolean;
 }
 const getSaved = () => readLocal<SavedDraft | null>(DRAFT_KEY, null);
 export default function Wizard() {
@@ -117,6 +118,7 @@ function Entry() {
                 throw new Error('Description drafting needs a configured same-origin endpoint.');
               const response = await fetch(DRAFT_ENDPOINT, {
                 method: 'POST',
+                signal: AbortSignal.timeout(12000),
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
                 body: JSON.stringify({ description, language }),
               });
@@ -231,7 +233,17 @@ function WizardForm({ type, editingId }: { type: 'sales' | 'hr'; editingId?: str
   }, [editingId, notify]);
   useEffect(() => {
     if (!loading)
-      setDraftSaved(writeLocal(DRAFT_KEY, { draft, raw, contacts, advanced, step, savedId }));
+      setDraftSaved(
+        writeLocal(DRAFT_KEY, {
+          draft,
+          raw,
+          contacts,
+          advanced,
+          step,
+          savedId,
+          drafted: same?.drafted,
+        }),
+      );
   }, [draft, raw, contacts, advanced, step, savedId, loading]);
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -351,6 +363,11 @@ function WizardForm({ type, editingId }: { type: 'sales' | 'hr'; editingId?: str
               } else void action(true);
             }}
           >
+            {same?.drafted && (
+              <p className="helper" style={{ marginBottom: 24 }}>
+                Drafted from your description. Please review every field.
+              </p>
+            )}
             <div className="form-fields" data-testid={`wizard-step-${step}`}>
               {step === 0 && (
                 <>
@@ -391,6 +408,9 @@ function WizardForm({ type, editingId }: { type: 'sales' | 'hr'; editingId?: str
                             { value: 'book demo', label: 'Book a demo / visit' },
                             { value: 'schedule callback', label: 'Call back later' },
                             { value: 'collect interest', label: 'Collect interest' },
+                            ...(draft.goal === 'direct sale link'
+                              ? [{ value: 'direct sale link', label: 'Send approved link' }]
+                              : []),
                           ]}
                           onChange={(v) => set('goal', v as CampaignDraftMinimal['goal'])}
                         />
@@ -668,7 +688,9 @@ function WizardForm({ type, editingId }: { type: 'sales' | 'hr'; editingId?: str
                     <span>{copy.consent}</span>
                   </label>
                   <p className="helper">
-                    Test mode is on by default. Only validated numbers in this list are allowlisted.
+                    {base && !base.compliance.test_mode
+                      ? 'Live calling is enabled for this existing campaign. Existing compliance limits apply.'
+                      : 'Test mode is on by default. Only validated numbers in this list are allowlisted.'}
                   </p>
                   <p className="helper">
                     Estimated usage: up to{' '}
@@ -677,7 +699,8 @@ function WizardForm({ type, editingId }: { type: 'sales' | 'hr'; editingId?: str
                         (advanced.max_call_duration_s ?? base?.max_call_duration_s ?? 240)) /
                       60
                     ).toLocaleString('en-IN')}{' '}
-                    call minutes for one attempt per contact.
+                    call minutes for one attempt per {editingId ? 'newly added contact' : 'contact'}
+                    .
                   </p>
                 </>
               )}
@@ -837,6 +860,29 @@ function FineTune({
         </Field>
         {draft.type === 'sales' && (
           <>
+            <Field
+              label="Qualification questions"
+              hint="One job- or offer-related question per line."
+            >
+              <Textarea
+                value={(current.qualification_questions ?? []).map((q) => q.question).join('\n')}
+                onChange={(e) =>
+                  onChange({
+                    ...advanced,
+                    qualification_questions: e.target.value
+                      .split('\n')
+                      .filter(Boolean)
+                      .map((question, i) => ({
+                        question,
+                        field_key: `qualification_${i + 1}`,
+                        required: false,
+                        must_have: false,
+                        expected_answer_hint: '',
+                      })),
+                  })
+                }
+              />
+            </Field>
             {text('offer', 'Approved offer')}
             {text('offer_expiry', 'Offer expiry')}
             <Field label="Approved objection replies" hint="One objection | reply per line.">
@@ -866,6 +912,36 @@ function FineTune({
             {text('role_summary', 'Role summary')}
             {text('interview_process_text', 'Interview process')}
             {text('hiring_contact_name', 'Hiring contact')}
+            <Field
+              label="Nice-to-haves"
+              hint="One per line. These are never must-have requirements."
+            >
+              <Textarea
+                value={(current.nice_to_have ?? []).join('\n')}
+                onChange={(e) =>
+                  onChange({
+                    ...advanced,
+                    nice_to_have: e.target.value.split('\n').filter(Boolean),
+                  })
+                }
+              />
+            </Field>
+            <Field label="Resume deadline">
+              <Input
+                value={current.resume_submission?.deadline ?? ''}
+                onChange={(e) =>
+                  onChange({
+                    ...advanced,
+                    resume_submission: {
+                      channel: draft.resume_channel,
+                      value: draft.resume_value,
+                      instructions: current.resume_submission?.instructions ?? '',
+                      deadline: e.target.value,
+                    },
+                  })
+                }
+              />
+            </Field>
           </>
         )}
         <Field label="Do not say" hint="One item per line.">

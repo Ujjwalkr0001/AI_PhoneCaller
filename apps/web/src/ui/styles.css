@@ -181,7 +181,7 @@ strong {
   transition: border-color 160ms;
 }
 .input::placeholder {
-  color: #737c89;
+  color: var(--muted);
 }
 .input:focus {
   border-color: var(--accent);
@@ -496,6 +496,7 @@ strong {
   gap: 20px;
   font-size: 14px;
   max-width: calc(100vw - 32px);
+  width: max-content;
   z-index: 100;
 }
 .toast .btn {
@@ -1068,6 +1069,9 @@ strong {
   align-content: start;
   gap: 20px;
   padding: 24px 0;
+  max-height: 62dvh;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .message {
   max-width: 86%;
@@ -1649,6 +1653,12 @@ tbody tr:hover {
   .drawer-top h2 {
     font-size: 18px;
   }
+  .phone-transcript {
+    max-height: 48dvh;
+  }
+  .toast {
+    width: calc(100vw - 32px);
+  }
   .lead-card {
     padding: 24px;
   }
@@ -1765,4 +1775,17 @@ tbody tr:hover {
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+.skip-link:focus {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  width: auto;
+  height: auto;
+  padding: 12px 20px;
+  clip: auto;
+  clip-path: none;
+  z-index: 100;
+  background: white;
+  color: var(--text);
 }

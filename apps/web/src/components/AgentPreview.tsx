@@ -5,7 +5,9 @@ import { screeningPresets } from '../../../../packages/shared/src/minimal.js';
 import { csrf } from '../api.js';
 import { useApp } from '../App.js';
 import { Button, Card, Chip, Disclosure } from '../ui/index.js';
-const samples = new Map<string, string>();
+const samples = new Map<string, AudioBuffer>();
+let sampleContext: AudioContext | undefined;
+let playing: AudioBufferSourceNode | undefined;
 export function previewOpening(d: CampaignDraftMinimal, name = 'Mira') {
   const company = d.company_name.trim() || 'your company';
   if (d.languages[0] === 'hi-IN')
@@ -34,8 +36,12 @@ export function VoiceSample({
           setError('');
           const key = `${voice}:${language}`;
           void (async () => {
-            let url = samples.get(key);
-            if (!url) {
+            // Web Audio keeps samples compatible with the existing strict media CSP.
+            const context = sampleContext ?? new AudioContext();
+            sampleContext = context;
+            await context.resume();
+            let buffer = samples.get(key);
+            if (!buffer) {
               const response = await fetch('/api/v1/voice-preview', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
@@ -43,10 +49,19 @@ export function VoiceSample({
               });
               if (!response.ok)
                 throw new Error((await response.json()).error ?? 'Voice sample unavailable.');
-              url = URL.createObjectURL(await response.blob());
-              samples.set(key, url);
+              buffer = await context.decodeAudioData(await response.arrayBuffer());
+              samples.set(key, buffer);
             }
-            await new Audio(url).play();
+            playing?.stop();
+            const source = context.createBufferSource();
+            source.buffer = buffer;
+            source.connect(context.destination);
+            playing = source;
+            source.onended = () => {
+              source.disconnect();
+              if (playing === source) playing = undefined;
+            };
+            source.start();
           })()
             .catch((e) => setError(e.message))
             .finally(() => setBusy(false));

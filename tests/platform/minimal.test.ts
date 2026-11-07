@@ -109,9 +109,19 @@ describe('minimal campaign expansion', () => {
     base.compliance.allowlist = ['+12025550101'];
     base.compliance.test_mode = false;
     base.fact_sheet = 'Approved workspace policy';
+    base.qualification_questions = [
+      {
+        question: 'What should the team follow up on?',
+        field_key: 'follow_up',
+        required: false,
+        must_have: false,
+        expected_answer_hint: '',
+      },
+    ];
     const edited = expandToFullConfig(d, { base, contacts: [] });
     expect(edited.compliance.allowlist).toEqual(base.compliance.allowlist);
     expect(edited.compliance.test_mode).toBe(false);
     expect(edited.fact_sheet).toBe(base.fact_sheet);
+    expect(edited.qualification_questions).toEqual(base.qualification_questions);
   });
 });

@@ -18,6 +18,7 @@ import {
   Card,
   Chip,
   Disclosure,
+  ErrorState,
   Field,
   Input,
   Select,
@@ -225,7 +226,12 @@ export default function Settings() {
             <Button>Add number</Button>
           </form>
         )}
-        {suppression.isPending ? (
+        {suppression.isError ? (
+          <ErrorState
+            message="We couldn’t load blocked numbers."
+            retry={() => void suppression.refetch()}
+          />
+        ) : suppression.isPending ? (
           <Skeleton lines={1} />
         ) : suppression.data?.length ? (
           <Disclosure title={`${suppression.data.length} blocked numbers`}>
@@ -286,7 +292,9 @@ export default function Settings() {
       <section className="settings-section">
         <h2>Team</h2>
         <p>Your workspace members and their access.</p>
-        {team.isPending ? (
+        {team.isError ? (
+          <ErrorState message="We couldn’t load the team." retry={() => void team.refetch()} />
+        ) : team.isPending ? (
           <Skeleton lines={1} />
         ) : (
           team.data?.map((u) => (
@@ -306,13 +314,20 @@ export default function Settings() {
           AI disclosure is always on. Recording is off. The operator is responsible for consent and
           telemarketing obligations.
         </p>
+        {settings.isPending && <Skeleton lines={1} />}
+        {settings.isError && (
+          <ErrorState
+            message="We couldn’t load workspace settings."
+            retry={() => void settings.refetch()}
+          />
+        )}
         <div className="stack">
           <Field label="Keep transcripts for (days)">
             <Input
               type="number"
               min="1"
               max="365"
-              value={retention ?? settings.data?.retention_days ?? 30}
+              value={retention ?? settings.data?.retention_days ?? ''}
               onChange={(e) => setRetention(Number(e.target.value))}
               readOnly={!admin}
             />
@@ -320,6 +335,7 @@ export default function Settings() {
           {admin && (
             <div>
               <Button
+                disabled={!settings.data}
                 onClick={() => {
                   if (settings.data)
                     act(
@@ -381,7 +397,7 @@ export default function Settings() {
               <Input
                 type="number"
                 min="1"
-                value={cap ?? settings.data?.global_daily_minutes ?? 200}
+                value={cap ?? settings.data?.global_daily_minutes ?? ''}
                 onChange={(e) => setCap(Number(e.target.value))}
                 readOnly={!admin}
               />
