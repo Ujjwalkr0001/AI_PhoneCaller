@@ -18,6 +18,7 @@ import {
 } from '../data.js';
 import { languageNames, stageNames } from '../strings.js';
 import { Button, Card, Chip, Disclosure, Drawer, Input, StatusBadge } from '../ui/index.js';
+import RequirementMatch from './RequirementMatch.js';
 export interface LiveEvent {
   call_id: string;
   type: string;
@@ -98,6 +99,8 @@ export function PhoneTranscript({
       <div
         className="phone-transcript"
         role="log"
+        tabIndex={0}
+        aria-label={live ? 'Live transcript' : 'Conversation transcript'}
         aria-live={live ? 'polite' : 'off'}
         aria-relevant="additions"
       >
@@ -204,6 +207,7 @@ export function LeadCard({
       )}
       {result?.eligibility && (
         <div className="stack-small" style={{ marginBottom: 24 }}>
+          <RequirementMatch eligibility={result.eligibility} />
           <Chip>
             {(
               {

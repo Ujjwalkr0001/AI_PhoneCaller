@@ -27,6 +27,7 @@ import {
 } from '../ui/index.js';
 import { LanguageField } from './Wizard.js';
 import { VoiceSample } from '../components/AgentPreview.js';
+import Connections from '../components/Connections.js';
 interface SettingsData {
   retention_days: number;
   kill_switch: boolean;
@@ -75,10 +76,11 @@ export default function Settings() {
       <div className="page-heading">
         <div>
           <span className="eyebrow">Settings</span>
-          <h1>Just the essentials.</h1>
-          <p>Choose where results go and how your workspace behaves.</p>
+          <h1>Make yourself at home.</h1>
+          <p>Your connections, preferences and calling rules. All together.</p>
         </div>
       </div>
+      <Connections />
       <section id="delivery" className="settings-section">
         <h2>Delivery</h2>
         <p>
@@ -368,6 +370,10 @@ export default function Settings() {
                 onClick={() => {
                   if (confirm('Clear the unfinished campaign draft on this device?')) {
                     localStorage.removeItem(DRAFT_KEY);
+                    for (const key of Object.keys(localStorage).filter((k) =>
+                      k.startsWith('elevate-agent-v3-'),
+                    ))
+                      localStorage.removeItem(key);
                     notify('Local draft cleared.');
                   }
                 }}

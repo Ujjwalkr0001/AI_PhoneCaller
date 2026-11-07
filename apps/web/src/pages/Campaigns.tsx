@@ -10,6 +10,7 @@ import {
   type CallRow,
 } from '../data.js';
 import { languageNames, copy } from '../strings.js';
+import { workflowLabel } from '../workflows.js';
 import {
   Card,
   Chip,
@@ -162,7 +163,7 @@ export default function Campaigns() {
                   <div>
                     <div className="row between">
                       <div className="chips">
-                        <Chip>{row.data.type === 'hr' ? 'Recruitment' : 'Sales'}</Chip>
+                        <Chip>{workflowLabel(row.data)}</Chip>
                         {row.data.sample && <Chip>Sample</Chip>}
                       </div>
                       <StatusBadge status={row.data.status} />

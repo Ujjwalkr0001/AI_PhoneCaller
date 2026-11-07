@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 const metrics: Record<string, unknown> = {};
 async function login(page: Page) {
-  await page.goto('/');
+  await page.goto('/login?next=/campaigns');
   await page.getByLabel('Email address').fill(process.env.SEED_ADMIN_EMAIL ?? 'demo@example.test');
   await page
     .getByLabel('Password', { exact: true })
@@ -44,12 +44,12 @@ for (const width of [1440, 390]) {
       if (m.type() === 'error' && !m.text().includes('401')) errors.push(m.text());
     });
     await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
-    await mkdir('docs/screens', { recursive: true });
+    await mkdir('output/playwright/legacy-refresh', { recursive: true });
     const shot = async (name: string) => {
       const dismiss = page.getByRole('button', { name: 'Dismiss notification' });
       if (await dismiss.isVisible()) await dismiss.click();
       await page.screenshot({
-        path: `docs/screens/${name}-${width}.png`,
+        path: `output/playwright/legacy-refresh/${name}-${width}.png`,
         fullPage: !['conversation', 'conversation-test', 'conversation-transcript'].includes(name),
       });
     };
@@ -162,7 +162,7 @@ for (const width of [1440, 390]) {
       .getByRole('navigation', { name: 'Primary' })
       .getByRole('link', { name: 'Settings' })
       .click();
-    await page.getByRole('heading', { name: 'Just the essentials.' }).waitFor();
+    await page.getByRole('heading', { name: 'Make yourself at home.' }).waitFor();
     await shot('settings');
     await page.setViewportSize({ width: 360, height: 800 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

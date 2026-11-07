@@ -1,5 +1,5 @@
 export const copy = {
-  nav: ['Campaigns', 'Conversations', 'Settings'],
+  nav: ['Workspace', 'Conversations', 'Settings'],
   campaigns: 'Make room for better conversations.',
   campaignsIntro: 'Create a campaign. Meet the people who are ready for the next step.',
   entry: 'Who would you like to reach?',

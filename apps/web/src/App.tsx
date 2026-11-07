@@ -1,11 +1,16 @@
 import React, { createContext, lazy, Suspense, useContext, useEffect, useState } from 'react';
-import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { AudioLines, Plus, LogOut } from 'lucide-react';
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { ArrowLeft, ArrowUpRight, Plus, LogOut } from 'lucide-react';
 import { api, setCsrf } from './api.js';
 import { PRODUCT_NAME } from './config.js';
 import { copy } from './strings.js';
 import { query, useData, type CampaignRow, type Providers } from './data.js';
 import { Button, Card, Drawer, Field, Input, Skeleton, Toast } from './ui/index.js';
+import { Brand } from './components/Brand.js';
+import VoiceVisual from './components/VoiceVisual.js';
+import Landing from './pages/Landing.js';
+const Workspace = lazy(() => import('./pages/Workspace.js'));
+const Studio = lazy(() => import('./pages/Studio.js'));
 const Campaigns = lazy(() => import('./pages/Campaigns.js'));
 const Wizard = lazy(() => import('./pages/Wizard.js'));
 const Conversations = lazy(() => import('./pages/Conversations.js'));
@@ -26,7 +31,8 @@ export default function App() {
   const [user, setUser] = useState<Session | null>(),
     [toast, setToast] = useState(''),
     [privacy, setPrivacy] = useState(false);
-  const location = useLocation();
+  const location = useLocation(),
+    navigate = useNavigate();
   useEffect(() => {
     document.documentElement.removeAttribute('data-theme');
     document.title = PRODUCT_NAME;
@@ -37,6 +43,23 @@ export default function App() {
       })
       .catch(() => setUser(null));
   }, []);
+  if (location.pathname === '/') return <Landing signedIn={!!user} />;
+  const requested = new URLSearchParams(location.search).get('next');
+  const afterLogin =
+    requested && /^\/(agents\/|campaigns|settings|conversations|workspace)/.test(requested)
+      ? requested
+      : '/workspace';
+  if (location.pathname === '/login')
+    return user ? (
+      <Navigate to={afterLogin} replace />
+    ) : (
+      <Login
+        onLogin={(u) => {
+          setUser(u);
+          navigate(afterLogin, { replace: true });
+        }}
+      />
+    );
   if (user === undefined)
     return (
       <div className="login-page">
@@ -45,7 +68,8 @@ export default function App() {
         </div>
       </div>
     );
-  if (!user) return <Login onLogin={setUser} />;
+  if (!user)
+    return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />;
   return (
     <Context.Provider value={{ user, notify: setToast }}>
       <Shell
@@ -55,6 +79,7 @@ export default function App() {
             .then(() => {
               query.clear();
               setUser(null);
+              navigate('/');
             })
             .catch((e) => setToast(e.message));
         }}
@@ -62,7 +87,8 @@ export default function App() {
       >
         <Suspense fallback={<Skeleton />}>
           <Routes>
-            <Route path="/" element={<Navigate to="/campaigns" replace />} />
+            <Route path="/workspace" element={<Workspace />} />
+            <Route path="/agents/:workflow" element={<Studio />} />
             <Route path="/campaigns" element={<Campaigns />} />
             <Route path="/campaigns/new" element={<Wizard />} />
             <Route path="/campaigns/new/:workflow" element={<Wizard />} />
@@ -74,7 +100,7 @@ export default function App() {
             <Route path="/candidates" element={<Navigate to="/conversations" replace />} />
             <Route path="/analytics" element={<Navigate to="/campaigns" replace />} />
             <Route path="/compliance" element={<Navigate to="/settings#privacy" replace />} />
-            <Route path="*" element={<Navigate to="/campaigns" replace />} />
+            <Route path="*" element={<Navigate to="/workspace" replace />} />
           </Routes>
         </Suspense>
       </Shell>
@@ -120,7 +146,10 @@ function Shell({
     providers = useData<Providers>('/providers'),
     settings = useData<{ kill_switch: boolean }>('/settings'),
     campaigns = useData<CampaignRow[]>('/campaigns');
-  const wizard = location.pathname.includes('/new') || location.pathname.endsWith('/edit');
+  const wizard =
+    location.pathname.includes('/new') ||
+    location.pathname.endsWith('/edit') ||
+    location.pathname.startsWith('/agents/');
   return (
     <Context.Provider value={{ ...useApp(), providers: providers.data }}>
       <a className="sr-only skip-link" href="#main">
@@ -128,15 +157,18 @@ function Shell({
       </a>
       <header className="app-header">
         <div className="header-inner">
-          <Link to="/campaigns" className="brand" aria-label={`${PRODUCT_NAME} home`}>
-            <span className="brand-mark">
-              <AudioLines size={18} />
-            </span>
-            {PRODUCT_NAME}
-          </Link>
+          <Brand to="/workspace" />
           <nav className="primary-nav" aria-label="Primary">
             {copy.nav.map((name, i) => (
-              <NavLink to={['/campaigns', '/conversations', '/settings'][i]} key={name}>
+              <NavLink
+                to={['/workspace', '/conversations', '/settings'][i]}
+                key={name}
+                className={({ isActive }) =>
+                  isActive || (i === 0 && /^\/(agents|campaigns)/.test(location.pathname))
+                    ? 'active'
+                    : ''
+                }
+              >
                 {name}
               </NavLink>
             ))}
@@ -145,9 +177,9 @@ function Shell({
             {!wizard &&
               user.role === 'admin' &&
               !(location.pathname === '/campaigns' && campaigns.data?.length === 0) && (
-                <Link className="btn btn-primary" to="/campaigns/new">
+                <Link className="btn btn-primary" to="/workspace#workflows">
                   <Plus size={16} />
-                  New campaign
+                  Create agent
                 </Link>
               )}
             <details className="user-menu">
@@ -195,60 +227,76 @@ function Login({ onLogin }: { onLogin: (user: Session) => void }) {
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
   return (
-    <main className="login-page">
-      <Card className="login-card">
-        <div className="brand">
-          <span className="brand-mark">
-            <AudioLines size={18} />
-          </span>
-          {PRODUCT_NAME}
-        </div>
-        <h1>Welcome back.</h1>
-        <p>Sign in to your calling workspace.</p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setBusy(true);
-            setError('');
-            void api<Session>('/auth/login', 'POST', { email, password })
-              .then((u) => {
-                setCsrf(u.csrf);
-                onLogin(u);
-              })
-              .catch((e) => setError(e.message))
-              .finally(() => setBusy(false));
-          }}
-        >
-          <div className="form-fields">
-            <Field label="Email address">
-              <Input
-                type="email"
-                autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </Field>
-            <Field label="Password">
-              <Input
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </Field>
-          </div>
-          {error && (
-            <p className="field-error" role="alert" style={{ marginTop: 16 }}>
-              {error}
-            </p>
-          )}
-          <Button kind="primary" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in'}
-          </Button>
-        </form>
-      </Card>
+    <main className="auth-page">
+      <div className="auth-form-side">
+        <Brand />
+        <Link to="/" className="auth-back">
+          <ArrowLeft size={15} /> Back to home
+        </Link>
+        <Card className="login-card">
+          <span className="eyebrow">YOUR NEXT CONVERSATION STARTS HERE</span>
+          <h1>Welcome back.</h1>
+          <p>Sign in to bring your conversations together.</p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setBusy(true);
+              setError('');
+              void api<Session>('/auth/login', 'POST', { email, password })
+                .then((u) => {
+                  setCsrf(u.csrf);
+                  onLogin(u);
+                })
+                .catch((e) => setError(e.message))
+                .finally(() => setBusy(false));
+            }}
+          >
+            <div className="form-fields">
+              <Field label="Email address">
+                <Input
+                  type="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Password">
+                <Input
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </Field>
+            </div>
+            {error && (
+              <p className="field-error" role="alert" style={{ marginTop: 16 }}>
+                {error}
+              </p>
+            )}
+            <Button kind="primary" disabled={busy}>
+              {busy ? 'Signing in…' : 'Sign in'} {!busy && <ArrowUpRight size={17} />}
+            </Button>
+          </form>
+        </Card>
+        <p className="auth-note">Need an account? Ask your workspace administrator.</p>
+      </div>
+      <aside className="auth-art">
+        <span className="eyebrow">LESS FRICTION. MORE CONNECTION.</span>
+        <h2>
+          Good conversations.
+          <br />
+          Great possibilities.
+        </h2>
+        <VoiceVisual />
+        <p>
+          From your first sales hello to your next great hire.
+          <br />
+          One calm, connected workspace.
+        </p>
+      </aside>
     </main>
   );
 }

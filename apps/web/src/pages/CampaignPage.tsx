@@ -26,6 +26,7 @@ import { BrowserTest, ConversationDrawer, useLive } from '../components/Conversa
 import { ConversationList } from './Conversations.js';
 import { outcomeValues } from './Campaigns.js';
 import { languageNames, stageNames } from '../strings.js';
+import { workflowLabel } from '../workflows.js';
 export default function CampaignPage() {
   const { id } = useParams(),
     navigate = useNavigate(),
@@ -84,7 +85,7 @@ export default function CampaignPage() {
       <div className="page-heading">
         <div>
           <div className="row" style={{ marginBottom: 16 }}>
-            <Chip>{c.data.type === 'hr' ? 'Recruitment' : 'Sales'}</Chip>
+            <Chip>{workflowLabel(c.data)}</Chip>
             <StatusBadge status={c.data.status} />
             {c.data.sample && <Chip>Sample</Chip>}
           </div>

@@ -1,5 +1,7 @@
 # UI changes
 
+Historical report for the 7 November U0–U5 iteration. The [8 November frontend refresh](FRONTEND_REFRESH.md) supersedes the public site and signed-in home described here.
+
 The workspace now has three destinations: **Campaigns, Conversations, Settings**. Standalone Analytics and Compliance pages redirect; privacy and technical detail use disclosures. The old monolithic UI, sidebar, decorative panels and external font loading were removed.
 
 Sales and HR start with two purpose cards, then **Details → Contacts → Review**. Default field groups total **7 for Sales**, **10 for HR**; measured visible native controls are **3/1/1** and **4/3/1**. Optional configuration stays in Fine-tune. Shared minimal schemas expand into the unchanged server configuration; empty drafts persist without manufacturing facts.

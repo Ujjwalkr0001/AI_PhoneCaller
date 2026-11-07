@@ -9,7 +9,7 @@ test('draft survives refresh, contact removal can be undone, and voice samples c
     await page.waitForTimeout(
       Math.min(60000, (Number(budget.headers()['x-ratelimit-reset'] ?? 60) + 1) * 1000),
     );
-  await page.goto('/');
+  await page.goto('/login?next=/campaigns');
   await page.getByLabel('Email address').fill(process.env.SEED_ADMIN_EMAIL ?? 'demo@example.test');
   await page
     .getByLabel('Password', { exact: true })

@@ -1,0 +1,158 @@
+{
+  "date": "2026-11-08",
+  "timezone": "Asia/Calcutta",
+  "recordedAt": "2026-11-07T20:26:03.287Z",
+  "verification": {
+    "typecheck": "passed",
+    "lint": "passed",
+    "productionBuild": "passed",
+    "unitIntegrationTests": 93,
+    "fullE2ETests": 5,
+    "finalNewFlowE2ETests": 2,
+    "overflowCheckedAt": [
+      1440,
+      390,
+      360
+    ],
+    "appPageErrorsInNewFlow": 0,
+    "externalPhoneCallsPlaced": 0,
+    "serverSimulation": true
+  },
+  "audits": [
+    {
+      "page": "landing",
+      "path": "/",
+      "accessibility": 100,
+      "version": "12.8.2",
+      "measuredAt": "2026-11-07T20:20:31.873Z",
+      "emulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      }
+    },
+    {
+      "page": "workspace",
+      "path": "/workspace",
+      "accessibility": 100,
+      "version": "12.8.2",
+      "measuredAt": "2026-11-07T20:25:21.851Z",
+      "emulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      }
+    },
+    {
+      "page": "recruitment",
+      "path": "/agents/hr",
+      "accessibility": 100,
+      "version": "12.8.2",
+      "measuredAt": "2026-11-07T20:23:02.527Z",
+      "emulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      }
+    },
+    {
+      "page": "connections",
+      "path": "/settings",
+      "accessibility": 100,
+      "version": "12.8.2",
+      "measuredAt": "2026-11-07T20:21:48.150Z",
+      "emulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      }
+    },
+    {
+      "page": "conversations",
+      "path": "/conversations",
+      "accessibility": 100,
+      "version": "12.8.2",
+      "measuredAt": "2026-11-07T20:22:27.154Z",
+      "emulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      }
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "connections-1440.png",
+      "sha256": "68613ddff3682949489ce9270ad6bcc776c453a8f46d5e744ea69532ba79d577"
+    },
+    {
+      "path": "connections-390.png",
+      "sha256": "e269fe05f61724ef17d861fecf224e3b34ffd9852579164ef240cbd834ae38d4"
+    },
+    {
+      "path": "landing-1440.png",
+      "sha256": "85733e0c7d31447357f4ccdbce2b2cc89d85e4ec5b48c94fe5cc155017daf92c"
+    },
+    {
+      "path": "landing-390.png",
+      "sha256": "915c30aaf4f229c13fddd2e7521132132fd77612bb457c3e8599ad78c6c97d48"
+    },
+    {
+      "path": "login-1440.png",
+      "sha256": "d39306a275e03736b308482d7710ded0a672beaf1d4d4b1a8af425909e2d4250"
+    },
+    {
+      "path": "login-390.png",
+      "sha256": "1bc6ff6bad04527be5949d0e6c1b655a1a6bbfa96e98dfc0661978f7dd679311"
+    },
+    {
+      "path": "phone-portal-1440.png",
+      "sha256": "61ec8e180d024c5366300c57fddb029bd98cec8c40e54fa46835d525789e56e8"
+    },
+    {
+      "path": "phone-portal-390.png",
+      "sha256": "ddd7a293c4521951115b904bef0049b5b72dbcacefcb3e010de88c24f79c2a80"
+    },
+    {
+      "path": "recruitment-result-1440.png",
+      "sha256": "559140b9a5c9ef55e14e0701650306f7aaeef2efd95eafb355ff2389ab54534d"
+    },
+    {
+      "path": "recruitment-result-390.png",
+      "sha256": "fc7c02327a055191cfe0bb370b26467e2d6970b9fe27325496ce5f211eb83597"
+    },
+    {
+      "path": "recruitment-setup-1440.png",
+      "sha256": "3ec4eda22561e33ea163ad2b1055be323518c5cd4e06c2735cf0f88bdd11bb54"
+    },
+    {
+      "path": "recruitment-setup-390.png",
+      "sha256": "d21396b37712d94b447fae6192ce2864aa951856b66f0788162437dcb6ecda41"
+    },
+    {
+      "path": "workspace-1440.png",
+      "sha256": "1a20979b5b80ab7bb3dea7cfff13ca515f604c64bc17249bf441af1dfaf057eb"
+    },
+    {
+      "path": "workspace-390.png",
+      "sha256": "766c1c5d79a18b63e25ccfe3c6640f080fd982500432782de9ae55ff111f00cc"
+    }
+  ],
+  "scopeNotes": [
+    "Five frontend workflows use the existing Sales/HR question engines",
+    "Coverage percentage is confirmed job requirements, not a hiring probability",
+    "Live account credentials and PSTN quality are not verified",
+    "Appointment requests do not reserve an external calendar slot",
+    "Credentials remain server-managed"
+  ]
+}

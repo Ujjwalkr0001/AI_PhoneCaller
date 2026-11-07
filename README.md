@@ -1,5 +1,7 @@
 # ElevateBox Campaign Studio
 
+**New frontend (8 November):** a light public landing page, five-workflow workspace, recruitment question builder, phone-call panel and requirements-coverage results. Open http://localhost:3000, then choose **Sign in**. See [frontend refresh](docs/FRONTEND_REFRESH.md) and [current screenshots](docs/screens-refresh/README.md). Live calling still needs configured providers; the local demo uses explicit simulation.
+
 Configure sales and HR calling campaigns with Gnani Prisma speech recognition, Gnani Timbre voice, and a separately configured dialogue LLM. The persistent server serves the React app, browser audio, Twilio Media Streams, authenticated APIs and a Postgres-backed queue.
 
 **Build status:** working local application and explicit offline simulation; live Gnani/Twilio verification and public staging deployment require account credentials. This is not yet certified as production ready. See [TODO_FOR_HUMAN.md](TODO_FOR_HUMAN.md).
@@ -84,8 +86,8 @@ pnpm exec tsx scripts/loadtest-media.ts # explicit MOCK_MODE=true, dedicated loc
 
 The test database must be local/dedicated. Set `TEST_DATABASE_URL` as documented in `.env.example`. Tests create isolated tenant IDs and remove only their own records. [Evaluation and actual measurement limits](docs/EVAL.md) describe the test evidence. Live LLM evaluation is **not run**. No live hallucination, latency, cost or concurrency benchmark is claimed.
 
-![Running dashboard - explicit simulation](docs/screenshots/dashboard.png)
-![Agent configuration wizard](docs/screenshots/wizard.png)
+![Public landing page](docs/screens-refresh/landing-1440.png)
+![Five-workflow workspace - explicit simulation](docs/screens-refresh/workspace-1440.png)
 
 ## Safety and limitations
 

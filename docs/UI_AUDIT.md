@@ -1,5 +1,7 @@
 # UI audit — before and after
 
+Historical 7 November measurements. See the [8 November frontend refresh](FRONTEND_REFRESH.md) for the current public landing page and five-workflow workspace.
+
 Baseline `7d242b4`. Scope: web UI, shared minimal-form expansion, UI tests/docs only. The server, speech/call pipeline, telephony, compliance gate and submission logic stay unchanged.
 
 ## Baseline inventory and decisions

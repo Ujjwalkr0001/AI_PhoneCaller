@@ -30,3 +30,4 @@ test-results/
 .local/
 .local-audit.json
 output/
+.playwright-cli/
