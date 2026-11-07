@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"], "jsx": "react-jsx", "strict": true,
+    "esModuleInterop": true, "skipLibCheck": true, "resolveJsonModule": true,
+    "noUnusedLocals": true, "noUnusedParameters": true, "noEmit": true
+  },
+  "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "tests/platform/**/*.ts", "scripts/platform/**/*.ts", "scripts/spike_gnani.ts", "scripts/smoke-test.ts", "scripts/loadtest-media.ts", "eval/**/*.ts", "playwright.config.ts"],
+  "exclude": ["node_modules", "**/dist"]
+}

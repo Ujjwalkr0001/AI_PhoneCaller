@@ -24,3 +24,7 @@ pnpm-debug.log*
 
 # App specific
 /transcripts/
+docs/provider/
+playwright-report/
+test-results/
+.local/
