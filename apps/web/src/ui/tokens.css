@@ -1,0 +1,25 @@
+:root {
+  --page: #fafaf9;
+  --surface: #fff;
+  --text: #0f172a;
+  --muted: #64748b;
+  --border: #e7e5e4;
+  --accent: #4f46e5;
+  --accent-soft: #f1f0ff;
+  --green: #16734b;
+  --green-soft: #eef8f2;
+  --amber: #8b5b10;
+  --amber-soft: #fff7e8;
+  --red: #b42332;
+  --red-soft: #fff0f1;
+  --radius: 16px;
+  --space: 8px;
+  --float-shadow: 0 16px 64px #0f172a14;
+  color-scheme: light;
+  font-family: 'Inter Variable', Inter, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--page);
+  font-synthesis: none;
+}
