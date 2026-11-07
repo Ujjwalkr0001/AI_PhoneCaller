@@ -1,4 +1,4 @@
-# UI audit — before implementation
+# UI audit — before and after
 
 Baseline `7d242b4`. Scope: web UI, shared minimal-form expansion, UI tests/docs only. The server, speech/call pipeline, telephony, compliance gate and submission logic stay unchanged.
 
@@ -57,4 +57,41 @@ No existing API exposes dialogue-driven form drafting, WhatsApp follow-up, Googl
 
 ## After measurements
 
-Pending implementation and actual Playwright/Lighthouse runs. No time, score or success claim yet.
+| Measurement | Before | After |
+|---|---|---|
+| Primary navigation | 7 | **3**: Campaigns, Conversations, Settings |
+| Distinct page surfaces (wizard counted once) | 10 | **7**: login, campaigns, entry, wizard, campaign detail, conversations, settings |
+| Wizard | 6 stages including choice | Separate choice, then **3** steps |
+| Home stat tiles | 4 | **3**, excluding sample/simulation results |
+| Sales native controls, by step | 16 / 8 / 2 / 12 / 0 | **3 / 1 / 1** |
+| HR native controls, by step | 23 / 8 / 2 / 12 / 0 | **4 / 3 / 1** |
+| Sales default field groups | Long multi-stage form | **7** = 5 Details + 1 Contacts + consent |
+| HR default field groups | Long multi-stage form | **10** = 5 Details + 4 Contacts/follow-up + consent |
+
+Native controls count visible input/textarea/select elements, including consent. Button-based goal, language and screening groups are counted separately in the field-group budget. Optional disclosures, row corrections and editable hours are excluded from the default-entry budget. Both widths independently assert ≤5 visible native controls per step. Every wizard step also checks overflow at 360px.
+
+Playwright measured login → launched **mock, allowlisted** Sales campaign at **2.68 seconds (1440px)** and **4.09 seconds (390px)** in the final run. The raw measurements are recorded in `UI_VERIFICATION.json`. This is automated entry of prepared synthetic data, including screenshots and API validation; it is not a human usability study. Both flows assert <120 seconds. Test-run waits for the unchanged server rate-limit window happen before the timing starts.
+
+### Verification
+
+Re-run with the database and local server running in **simulation mode**: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, then `pnpm test:e2e`. The E2E test refuses to launch when `/providers` does not report simulation. It refreshes screenshot files and ignored `output/playwright/ui-metrics.json`. Lighthouse was invoked against the authenticated production build with `--only-categories=accessibility --disable-storage-reset --output=json`; raw local reports stay in ignored `output/playwright/`, while the committed summary omits session headers.
+
+- All **90** unit/integration tests pass: the existing 83 plus 7 minimal-expansion tests. Typecheck, lint and production build pass.
+- Three Playwright tests cover both complete Sales/HR flows, mock launch, streamed browser simulation, saved transcript/result drawer, collapsed Details, keyboard Escape, CSV validation, duplicate/invalid rows, removal/undo, autosave/refresh, failed voice sample retry and cache reuse. Main flow runs assert no application console/page errors; the initial unauthenticated 401 is expected. The resilience fixture deliberately returns a sample-service 503.
+- Native disclosure greeting includes AI disclosure; English and Hindi preview strings remain. Voice sample uses Web Audio so it works with the unchanged strict media policy. The cache test decodes a silent local WAV fixture and verifies one successful fetch is reused. **Live Gnani sample quality/latency is not established by that fixture.** In simulation the UI states that a live sample is unavailable.
+- Lighthouse **12.8.2**, authenticated local production build, default mobile emulation: **100** accessibility on Campaigns, entry, Sales setup, HR setup, campaign detail, Conversations and Settings. Scores and audit timestamps are in `UI_VERIFICATION.json`. Lighthouse is an automated check, not a complete WCAG certification.
+- Route-level lazy loading; no chart dependency, remote font request, gradients or copied reference assets. Initial JS is approximately 139kB gzip, wizard chunk approximately 78.5kB gzip, CSS approximately 7.4kB gzip. Inter is self-hosted; its OFL licence is shipped at `/fonts/Inter-OFL.txt`. This is the only added dependency.
+- Background reads use a 30-second interval, 15-second freshness and targeted invalidation; live result events coalesce refreshes. The backend rate limit remains unchanged. BrowserAudio's only edit makes repeated UI cleanup safe when its AudioContext is already closed.
+- `git diff 7d242b4 -- apps/server packages/shared/src/index.ts` is empty. Existing schemas, call/telephony/Gnani/compliance/submission code are unchanged.
+
+### Screenshots and review limits
+
+Desktop **1440×1000** and mobile **390×844** screenshots in `screens/`: campaigns, entry, Sales Details/Contacts/Review, HR Details/Contacts/Review, campaign, conversations list, saved conversation, browser test, settings. The mobile transcript has an additional capture. All contacts/companies in created campaigns are synthetic; mock and sample records are labelled. Screenshot review checked spacing, wrapping, disclosure defaults and mobile table cards. Contact masks retain the final four digits.
+
+Manually review live voice pronunciation with your configured Gnani account; very long real company/job names; real webhook failures/retries; screen-reader reading order in the mobile conversation stack. No live PSTN call, public deployment or external message was sent during verification.
+
+### Remaining capability gaps
+
+The description assistant is conditional on `UI_DRAFT_ENDPOINT` (a same-origin `/api/` adapter). There is no suitable existing server route, so it is hidden by default. Its strict schema admits only source-matching company/offer/job/location/requirements, never model-supplied price or salary, and keeps values editable with a review note. The adapter path itself is not end-to-end verified here.
+
+Automatic WhatsApp candidate notifications, Google Sheets delivery and persisted resume-received toggles/follow-up actions are omitted because no existing API supports them. Resume destinations are instructions the existing agent can share during the call. This UI does not claim that a message was sent. These requested features remain incomplete under the backend freeze.

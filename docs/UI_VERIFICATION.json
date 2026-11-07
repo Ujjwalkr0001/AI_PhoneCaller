@@ -1,0 +1,290 @@
+{
+  "recordedAt": "2026-11-07T15:06:47.981Z",
+  "scope": "UI only; existing server and full shared schemas unchanged",
+  "checks": {
+    "typecheck": "passed",
+    "lint": "passed",
+    "productionBuild": "passed",
+    "unitIntegration": {
+      "passed": 90,
+      "existing": 83,
+      "newMinimalExpansion": 7
+    },
+    "playwright": {
+      "passed": 3,
+      "applicationConsoleErrors": 0,
+      "expectedInitialUnauthenticatedStatus": 401,
+      "expectedVoiceFixtureStatus": 503
+    }
+  },
+  "launchTimingDefinition": "Automated prepared synthetic Sales form: immediately before login navigation until launched mock campaign detail. Rate-limit waits occur before timing. Not a human usability study.",
+  "measurements": {
+    "1440-sales-details": 3,
+    "1440-sales-contacts": 1,
+    "1440-sales-review": 1,
+    "1440-login-to-launch-seconds": 2.68,
+    "1440-hr-details": 4,
+    "1440-hr-contacts": 3,
+    "1440-hr-review": 1,
+    "390-sales-details": 3,
+    "390-sales-contacts": 1,
+    "390-sales-review": 1,
+    "390-login-to-launch-seconds": 4.09,
+    "390-hr-details": 4,
+    "390-hr-contacts": 3,
+    "390-hr-review": 1
+  },
+  "fieldGroups": {
+    "sales": [
+      5,
+      1,
+      1
+    ],
+    "hr": [
+      5,
+      4,
+      1
+    ]
+  },
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "overflowCheckedAt": 360,
+  "audits": [
+    {
+      "page": "campaigns",
+      "path": "/campaigns",
+      "score": 100,
+      "fetchedAt": "2026-11-07T15:05:38.055Z",
+      "lighthouseVersion": "12.8.2",
+      "formFactor": "mobile",
+      "emulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      },
+      "failedAuditIds": []
+    },
+    {
+      "page": "entry",
+      "path": "/campaigns/new",
+      "score": 100,
+      "fetchedAt": "2026-11-07T15:06:29.896Z",
+      "lighthouseVersion": "12.8.2",
+      "formFactor": "mobile",
+      "emulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      },
+      "failedAuditIds": []
+    },
+    {
+      "page": "sales",
+      "path": "/campaigns/new/sales",
+      "score": 100,
+      "fetchedAt": "2026-11-07T15:04:44.367Z",
+      "lighthouseVersion": "12.8.2",
+      "formFactor": "mobile",
+      "emulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      },
+      "failedAuditIds": []
+    },
+    {
+      "page": "hr",
+      "path": "/campaigns/new/hr",
+      "score": 100,
+      "fetchedAt": "2026-11-07T15:05:11.434Z",
+      "lighthouseVersion": "12.8.2",
+      "formFactor": "mobile",
+      "emulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      },
+      "failedAuditIds": []
+    },
+    {
+      "page": "campaign",
+      "path": "/campaigns/47883f68-b805-4752-a1e0-a633243d6fc6",
+      "score": 100,
+      "fetchedAt": "2026-11-07T15:06:13.806Z",
+      "lighthouseVersion": "12.8.2",
+      "formFactor": "mobile",
+      "emulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      },
+      "failedAuditIds": []
+    },
+    {
+      "page": "conversations",
+      "path": "/conversations",
+      "score": 100,
+      "fetchedAt": "2026-11-07T15:04:27.673Z",
+      "lighthouseVersion": "12.8.2",
+      "formFactor": "mobile",
+      "emulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      },
+      "failedAuditIds": []
+    },
+    {
+      "page": "settings",
+      "path": "/settings",
+      "score": 100,
+      "fetchedAt": "2026-11-07T15:05:57.027Z",
+      "lighthouseVersion": "12.8.2",
+      "formFactor": "mobile",
+      "emulation": {
+        "mobile": true,
+        "width": 412,
+        "height": 823,
+        "deviceScaleFactor": 1.75,
+        "disabled": false
+      },
+      "failedAuditIds": []
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "screens/campaign-1440.png",
+      "sha256": "6a3a81426db661640daf41dcfe9fd7e7c95b2944298e15f25aca87e810505f2e"
+    },
+    {
+      "file": "screens/campaign-390.png",
+      "sha256": "ec6e94203ae915742ce81383c7551b6045483be6e6669f094fde7aae70f1471b"
+    },
+    {
+      "file": "screens/campaigns-1440.png",
+      "sha256": "04e0420a99859bfd7b562416309515c361aa662a342f83aa3801ccf539676742"
+    },
+    {
+      "file": "screens/campaigns-390.png",
+      "sha256": "9022a57f3b96cd914ccd867a90978ea2f7a43e8db21b66431e043c2fcc010224"
+    },
+    {
+      "file": "screens/conversation-1440.png",
+      "sha256": "0a7011ae5c5767a26d9e08d8353efce6f81b0e0002d894d217c1d5e44639fff6"
+    },
+    {
+      "file": "screens/conversation-390.png",
+      "sha256": "1fd07263538e96dcaf507e889c91d55f5c62087bbfc6d6e89ca49c67ec0a6d99"
+    },
+    {
+      "file": "screens/conversation-test-1440.png",
+      "sha256": "a7d9db30830247ef95dc4d62fabfe3588048f4b5cafb6b0289e58d7a1492952c"
+    },
+    {
+      "file": "screens/conversation-test-390.png",
+      "sha256": "d178f5c2756fff7080c3f163e998bd5dd37ce80fbe3dfc5d408c6c91b6b9b4d6"
+    },
+    {
+      "file": "screens/conversation-transcript-390.png",
+      "sha256": "8fa39b987ea32baa80fdbea34c65109bdd3c8f26366260a92e868d0d51542f08"
+    },
+    {
+      "file": "screens/conversations-1440.png",
+      "sha256": "124739b142e934a9b40a1b9d16f89cd9f19592331bbfd80e80b53b52929dd243"
+    },
+    {
+      "file": "screens/conversations-390.png",
+      "sha256": "8d3857de46dd8aaa1ed37b6ecee983154757405d7ad5d8c7aa44536e6c55ca85"
+    },
+    {
+      "file": "screens/entry-1440.png",
+      "sha256": "47d190d6c564842ebaec7d277366ecd24439df0d784d46acab37a751defc9038"
+    },
+    {
+      "file": "screens/entry-390.png",
+      "sha256": "3cc9e144d802c8930c577b0365d45ee89c858b8e35a7d103c360ce1c0b416feb"
+    },
+    {
+      "file": "screens/hr-contacts-1440.png",
+      "sha256": "febd64bd02c8b9d8a1c18cd3a9f157a96c092b9857f226c765f27b4ec296ac09"
+    },
+    {
+      "file": "screens/hr-contacts-390.png",
+      "sha256": "cf2002e727b5285708c020bb88a056f2c111e720b3fc0837b7d7d7046f0142f9"
+    },
+    {
+      "file": "screens/hr-details-1440.png",
+      "sha256": "f18149f327d007c4876a7937a7e1555f5cf7659a90ab9ce6765e298496c6a4b5"
+    },
+    {
+      "file": "screens/hr-details-390.png",
+      "sha256": "4ea4665c6b24991d0b904038dfbf762f5196725bcf10a47d1a9b2164dbe89930"
+    },
+    {
+      "file": "screens/hr-review-1440.png",
+      "sha256": "29ef033fdd3a14497c8736b370216921482f1eb8dc38147836d1adc27323a9e4"
+    },
+    {
+      "file": "screens/hr-review-390.png",
+      "sha256": "be818d10a8a86009ece2fe7147e8adc7520e2c5937af7212c92434ed0556766f"
+    },
+    {
+      "file": "screens/sales-contacts-1440.png",
+      "sha256": "f26ec494cf0323046bda121c6a4c0cf1c701ca77b5f7f6330f0926d420dfe477"
+    },
+    {
+      "file": "screens/sales-contacts-390.png",
+      "sha256": "bd42719050ef2a7332bfd25a8c4074d552f50bd0fc5fe8f9e68b3ac53b56e5bb"
+    },
+    {
+      "file": "screens/sales-details-1440.png",
+      "sha256": "60a384c73876da2d6a3a806b8bfc6070acd81619bfac6d2f3bf5a2363cbf5a36"
+    },
+    {
+      "file": "screens/sales-details-390.png",
+      "sha256": "8e355312bfbb488066c8190f2b1aea6bb9795a9ac35d5108c328db42c8906009"
+    },
+    {
+      "file": "screens/sales-review-1440.png",
+      "sha256": "f5301a9979f161ba9cc516f9c2c6601481a075dc505cefc743b70d177f07b786"
+    },
+    {
+      "file": "screens/sales-review-390.png",
+      "sha256": "6fdbc0dbb6a2b2d4011e9c0f3e1b4f6950c5eabae2d3a892810ea58ed35fad96"
+    },
+    {
+      "file": "screens/settings-1440.png",
+      "sha256": "ed4186a8548381cdcbcbd5a11b5dbc9c48cdca9ebee84302d38d50216f5dfcb2"
+    },
+    {
+      "file": "screens/settings-390.png",
+      "sha256": "72536d09b9aaf667d030eeac00e591a452b732c73736322b3ede519d60efb486"
+    }
+  ],
+  "limitations": [
+    "No live PSTN or Gnani quality verification",
+    "Voice cache/decoding uses a silent WAV test fixture",
+    "Description adapter absent; conditional UI is not end-to-end verified",
+    "WhatsApp automation, Sheets and persisted resume updates require missing server APIs"
+  ]
+}
