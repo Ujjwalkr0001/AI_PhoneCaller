@@ -46,7 +46,7 @@ export class CompatibleDialogue implements DialogueClient {
     first: () => void,
   ) {
     const config = dialogueConfig();
-    if (!config.key) throw new Error('GROQ_API_KEY or DIALOGUE_API_KEY is required');
+    if (!config.key) throw new Error('Dialogue API key is required for the selected provider');
     const hrFacts = {
       company_name: c.company_name, company_about: c.company_about,
       job_title: c.job_title, role_summary: c.role_summary, location: c.location,
@@ -65,10 +65,12 @@ export class CompatibleDialogue implements DialogueClient {
         headers: { Authorization: `Bearer ${config.key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: config.model,
+          ...(config.provider === 'openai' && /^gpt-5\.4-mini(?:-|$)/.test(config.model)
+            ? { reasoning_effort: 'none' } : {}),
           ...(config.provider === 'groq' && /^openai\/gpt-oss-/.test(config.model)
             ? { reasoning_effort: 'low' } : {}),
-          temperature: 0.2,
-          max_tokens: 600,
+          ...(config.provider === 'openai' ? { max_completion_tokens: 600 }
+            : { temperature: 0.2, max_tokens: 600 }),
           stream: true,
           stream_options: { include_usage: true },
           messages: [

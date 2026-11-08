@@ -27,12 +27,12 @@ const guides = [
     note: 'Prisma recognizes the caller; Timbre speaks the agent reply. A single GNANI_API_KEY is also supported.',
   },
   {
-    name: 'Groq',
+    name: 'OpenAI',
     description: 'The conversation behind the voice',
     icon: Link2,
-    console: 'https://console.groq.com/',
-    keys: ['GROQ_API_KEY'],
-    note: 'Groq runs the dialogue and writes a grounded post-call summary. The default model is openai/gpt-oss-20b. Explicit DIALOGUE_* settings can select another compatible model.',
+    console: 'https://platform.openai.com/api-keys',
+    keys: ['OPENAI_API_KEY'],
+    note: 'OpenAI answers candidate questions and writes grounded post-call summaries. The default model is gpt-5.4-mini. Explicit DIALOGUE_* settings can select another compatible model.',
   },
 ];
 export default function Connections() {
@@ -51,7 +51,7 @@ export default function Connections() {
         <div className="connection-grid">
           {guides.map((g) => {
             const service = providers.services.find((s) =>
-              s.name.includes(g.name === 'Groq' ? 'Dialogue' : g.name),
+              s.name.includes(g.name === 'OpenAI' ? 'Dialogue' : g.name),
             );
             return (
               <Card className="connection-card" key={g.name}>
@@ -119,7 +119,7 @@ export default function Connections() {
         </div>
         <div className="setup-check">
           <Check size={15} />
-          <span>Gnani STT/TTS and Groq dialogue configured.</span>
+          <span>Gnani STT/TTS and OpenAI dialogue configured.</span>
         </div>
         <div className="setup-check">
           <Check size={15} />

@@ -23,8 +23,10 @@ export async function analyzeCall(
     headers: { Authorization: `Bearer ${config.key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: config.model,
-      temperature: 0.2,
-      max_tokens: 450,
+      ...(config.provider === 'openai' && /^gpt-5\.4-mini(?:-|$)/.test(config.model)
+        ? { reasoning_effort: 'none' } : {}),
+      ...(config.provider === 'openai' ? { max_completion_tokens: 450 }
+        : { temperature: 0.2, max_tokens: 450 }),
       response_format: { type: 'json_object' },
       messages: [
         {

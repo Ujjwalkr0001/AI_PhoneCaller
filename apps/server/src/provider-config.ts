@@ -3,21 +3,22 @@ export const gnaniSttKey = () => process.env.GNANI_STT || process.env.GNANI_API_
 export const gnaniTtsKey = () => process.env.GNANI_TTS || process.env.GNANI_API_KEY;
 
 export function dialogueConfig() {
-  const groq = !!process.env.GROQ_API_KEY && !process.env.DIALOGUE_API_KEY;
-  const provider = process.env.DIALOGUE_PROVIDER || (groq ? 'groq' : 'sarvam');
+  const provider = process.env.DIALOGUE_PROVIDER || 'openai';
   return {
     provider,
     key:
       process.env.DIALOGUE_API_KEY ||
-      (provider === 'groq' ? process.env.GROQ_API_KEY : process.env.SARVAM_API_KEY),
+      (provider === 'openai' ? process.env.OPENAI_API_KEY
+        : provider === 'groq' ? process.env.GROQ_API_KEY : process.env.SARVAM_API_KEY),
     model:
       process.env.DIALOGUE_MODEL ||
-      (provider === 'groq' ? 'openai/gpt-oss-20b' : 'sarvam-105b-conversations'),
+      (provider === 'openai' ? 'gpt-5.4-mini'
+        : provider === 'groq' ? 'openai/gpt-oss-20b' : 'sarvam-105b-conversations'),
     url:
       process.env.DIALOGUE_URL ||
-      (provider === 'groq'
-        ? 'https://api.groq.com/openai/v1/chat/completions'
-        : 'https://api.sarvam.ai/v1/chat/completions'),
+      (provider === 'openai' ? 'https://api.openai.com/v1/chat/completions'
+        : provider === 'groq' ? 'https://api.groq.com/openai/v1/chat/completions'
+          : 'https://api.sarvam.ai/v1/chat/completions'),
   };
 }
 

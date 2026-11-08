@@ -18,11 +18,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it('maps separate hackathon speech keys and Groq to the live providers', () => {
+it('maps hackathon speech keys and OpenAI to the live providers', () => {
   vi.stubEnv('GNANI_API_KEY', '');
   vi.stubEnv('GNANI_STT', 'stt-synthetic');
   vi.stubEnv('GNANI_TTS', 'tts-synthetic');
   vi.stubEnv('GROQ_API_KEY', 'groq-synthetic');
+  vi.stubEnv('OPENAI_API_KEY', 'openai-synthetic');
   vi.stubEnv('DIALOGUE_API_KEY', '');
   vi.stubEnv('DIALOGUE_PROVIDER', '');
   vi.stubEnv('DIALOGUE_MODEL', '');
@@ -35,9 +36,10 @@ it('maps separate hackathon speech keys and Groq to the live providers', () => {
   expect(gnaniSttKey()).toBe('stt-synthetic');
   expect(gnaniTtsKey()).toBe('tts-synthetic');
   expect(dialogueConfig()).toMatchObject({
-    provider: 'groq',
-    model: 'openai/gpt-oss-20b',
-    url: 'https://api.groq.com/openai/v1/chat/completions',
+    provider: 'openai',
+    key: 'openai-synthetic',
+    model: 'gpt-5.4-mini',
+    url: 'https://api.openai.com/v1/chat/completions',
   });
   expect(Object.values(liveReadiness()).every(Boolean)).toBe(true);
   expect(requireLiveCalling).not.toThrow();
@@ -82,8 +84,8 @@ it('validates Twilio against the public callback URL including WSS media', () =>
   ).toBe(false);
 });
 
-it('saves a grounded recruitment summary and job-related comment', async () => {
-  vi.stubEnv('GROQ_API_KEY', 'synthetic-key');
+it('saves a grounded recruitment summary and job-related comment through OpenAI', async () => {
+  vi.stubEnv('OPENAI_API_KEY', 'synthetic-key');
   vi.stubEnv('DIALOGUE_API_KEY', '');
   vi.stubEnv('DIALOGUE_PROVIDER', '');
   vi.stubEnv('DIALOGUE_MODEL', '');
@@ -113,18 +115,21 @@ it('saves a grounded recruitment summary and job-related comment', async () => {
   );
   expect(result).toMatchObject({ tokens: 42, summary: expect.stringContaining('React') });
   const [url, init] = fetch.mock.calls[0];
-  expect(url).toBe('https://api.groq.com/openai/v1/chat/completions');
+  expect(url).toBe('https://api.openai.com/v1/chat/completions');
   expect(JSON.parse(String(init?.body))).toMatchObject({
-    model: 'openai/gpt-oss-20b',
+    model: 'gpt-5.4-mini',
+    reasoning_effort: 'none',
+    max_completion_tokens: 450,
     response_format: { type: 'json_object' },
   });
+  expect(JSON.parse(String(init?.body))).not.toHaveProperty('temperature');
   expect(JSON.parse(String(init?.body)).messages[1].content).toContain('CANDIDATE_COMPLETED');
 });
 
-it('accepts a spoken Groq response when optional tools are omitted', async () => {
-  vi.stubEnv('GROQ_API_KEY', 'synthetic-key');
+it('accepts a streamed OpenAI response when optional tools are omitted', async () => {
+  vi.stubEnv('OPENAI_API_KEY', 'synthetic-key');
   vi.stubEnv('DIALOGUE_API_KEY', '');
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+  const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response('data: {"choices":[{"delta":{"content":"{\\"text\\":\\"Hello there\\"}"}}]}\n\n'),
   );
   const reply = await new CompatibleDialogue().reply(
@@ -136,4 +141,21 @@ it('accepts a spoken Groq response when optional tools are omitted', async () =>
     () => {},
   );
   expect(reply).toMatchObject({ text: 'Hello there', tools: [] });
+  const [url, init] = fetch.mock.calls[0];
+  expect(url).toBe('https://api.openai.com/v1/chat/completions');
+  expect(JSON.parse(String(init?.body))).toMatchObject({
+    model: 'gpt-5.4-mini', reasoning_effort: 'none', max_completion_tokens: 600,
+    stream: true, response_format: { type: 'json_object' },
+  });
+});
+
+it('does not silently fall back to Groq when the OpenAI key is missing', () => {
+  vi.stubEnv('OPENAI_API_KEY', '');
+  vi.stubEnv('GROQ_API_KEY', 'groq-synthetic');
+  vi.stubEnv('DIALOGUE_API_KEY', '');
+  vi.stubEnv('DIALOGUE_PROVIDER', '');
+  expect(dialogueConfig()).toMatchObject({ provider: 'openai', key: '' });
+  expect(liveReadiness().dialogue).toBe(false);
+  vi.stubEnv('DIALOGUE_PROVIDER', 'groq');
+  expect(dialogueConfig()).toMatchObject({ provider: 'groq', key: 'groq-synthetic' });
 });
