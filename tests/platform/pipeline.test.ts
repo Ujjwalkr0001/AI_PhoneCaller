@@ -111,6 +111,24 @@ describe('full mock pipeline', () => {
     await utter(p, 'Not interested');
     expect(results[0].outcome).toBe('CANDIDATE_DECLINED');
   });
+  it('asks screening after permission and repeats it without skipping to follow-up consent', async () => {
+    const { p } = fixture('hr');
+    const dialogue = vi.spyOn(p.dialogue, 'reply').mockResolvedValue({
+      text: 'May the team follow up with you?', tools: [], tokens: 0,
+    });
+    await p.start();
+    await utter(p, 'Yes, please tell.');
+    expect(p.flow.stage).toBe('DISCOVERY_SCREENING');
+    expect(p.transcript.at(-1)?.text).toBe('Can you use TypeScript?');
+    expect(dialogue).not.toHaveBeenCalled();
+    await utter(p, 'Sorry, can you please repeat the question?');
+    expect(p.transcript.at(-1)?.text).toBe('Can you use TypeScript?');
+    expect(dialogue).not.toHaveBeenCalled();
+    expect(p.fields).toEqual({});
+    await utter(p, 'Yes, I can.');
+    expect(p.transcript.at(-1)?.text).toBe('Can you use TypeScript?');
+    expect(p.fields.consent_to_follow_up).toBeUndefined();
+  });
   it('voicemail terminal result contains no invented transcript', async () => {
     const { p, results } = fixture();
     await p.finish('VOICEMAIL');

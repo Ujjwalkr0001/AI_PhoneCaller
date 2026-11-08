@@ -25,6 +25,15 @@ const output = z.object({
     .max(8)
     .default([]),
 });
+const stageAction: Record<Stage, string> = {
+  GREETING_DISCLOSURE: 'The server is speaking the introduction. Do not ask follow-up consent.',
+  PERMISSION: 'Ask whether now is a good time. After agreement, advance to DISCOVERY_SCREENING and ask the first listed question. Do not ask follow-up consent.',
+  DISCOVERY_SCREENING: 'Capture the answer to the last listed question asked. Ask the next unanswered listed question. After all required answers, advance to PITCH_ROLE_INTRO and share approved role or product details. Do not ask follow-up consent.',
+  PITCH_ROLE_INTRO: 'Share approved role or product details, advance to OBJECTIONS_QA, and ask what questions the caller has.',
+  OBJECTIONS_QA: 'Answer using approved facts. When the caller has no more questions, advance to CLOSE and ask explicit follow-up consent.',
+  CLOSE: 'Capture explicit follow-up consent, advance to WRAP_UP, and say goodbye.',
+  WRAP_UP: 'Say goodbye and end the completed call.',
+};
 // OpenAI-compatible Chat Completions text endpoint; Gnani does not decide dialogue in this pipeline.
 export class CompatibleDialogue implements DialogueClient {
   name = `${dialogueConfig().provider} / ${dialogueConfig().model}`;
@@ -53,7 +62,7 @@ export class CompatibleDialogue implements DialogueClient {
           messages: [
             {
               role: 'system',
-              content: `${promptBuilder(c)}\nCurrent stage: ${stage}. Captured fields and tool results: ${JSON.stringify(fields)}\nSpoken facts and questions must copy approved campaign sentences verbatim. Do not paraphrase or translate unapproved factual claims. Safe conversational phrases: What questions do you have? May the team follow up with you? Thank you for your time. Goodbye. Could you please repeat that? The team will follow up. Use native-script facts supplied by the operator for other languages.\nReturn ONLY JSON: {"text":"short spoken response","tools":[{"name":"tool_name","args":{}}]}. Never embed tool calls in spoken text.`,
+              content: `${promptBuilder(c)}\nCurrent stage: ${stage}. Required action: ${stageAction[stage]} Captured fields and tool results: ${JSON.stringify(fields)}\nSpoken facts and questions must copy approved campaign sentences verbatim. Do not paraphrase or translate unapproved factual claims. Safe conversational phrases: What questions do you have? May the team follow up with you? Thank you for your time. Goodbye. Could you please repeat that? The team will follow up. Use native-script facts supplied by the operator for other languages.\nReturn ONLY JSON: {"text":"short spoken response","tools":[{"name":"tool_name","args":{}}]}. Never embed tool calls in spoken text.`,
             },
             ...history
               .slice(-20)

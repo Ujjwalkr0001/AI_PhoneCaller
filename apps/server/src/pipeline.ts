@@ -190,6 +190,12 @@ export class ConversationPipeline {
       await this.say('I am sorry for the interruption. Goodbye.');
       return this.finish('NOT_INTERESTED');
     }
+    if (/\brepeat\b|say (?:that|it|the question) again|come again|didn.t (?:hear|catch)/i.test(text)) {
+      const previous = this.transcript.filter((turn) => turn.role === 'agent').at(-1);
+      await this.say(previous?.text ?? 'Is this a good time?');
+      this.armIdle();
+      return;
+    }
     if (
       !/\p{L}/u.test(text) ||
       /unintelligible|noisy line|^what\??$|cannot hear|can't hear/i.test(text)
@@ -241,6 +247,19 @@ export class ConversationPipeline {
       await this.say('Understood. Goodbye.');
       return this.finish('NOT_INTERESTED');
     }
+    if (
+      this.flow.stage === 'PERMISSION' &&
+      /\b(yes|sure|okay|ok|please|go ahead|good time)\b|हाँ|हां/i.test(text)
+    ) {
+      this.flow.advance('DISCOVERY_SCREENING');
+      this.hooks.event('stage', this.flow.stage);
+      const firstQuestion = questions(this.campaign)[0];
+      await this.say(firstQuestion?.question ?? (this.campaign.type === 'hr'
+        ? 'What job-related experience would you like to share?'
+        : 'What are you looking for?'));
+      this.armIdle();
+      return;
+    }
     const timing: CallResult['latency'][number] = {
       stt_final_ms: e.endOfSpeechAt ? e.finalAt - e.endOfSpeechAt : undefined,
     };
@@ -260,10 +279,23 @@ export class ConversationPipeline {
     const results: unknown[] = [];
     for (const tool of reply.tools) results.push(await this.tool(tool, text));
     this.toolResult = results;
+    let spoken = reply.text;
+    if (/may (?:the )?team follow up with you/i.test(spoken) && this.flow.stage !== 'CLOSE') {
+      const pending = questions(this.campaign).find((q) => this.fields[q.field_key] === undefined);
+      if (this.flow.stage === 'PERMISSION') spoken = 'Is this a good time?';
+      else if (this.flow.stage === 'DISCOVERY_SCREENING' && pending) spoken = pending.question;
+      else if (this.flow.stage === 'DISCOVERY_SCREENING') {
+        this.flow.advance('PITCH_ROLE_INTRO');
+        this.hooks.event('stage', this.flow.stage);
+        spoken = this.campaign.type === 'hr'
+          ? this.campaign.role_summary || 'What questions do you have?'
+          : this.campaign.product_description || this.campaign.fact_sheet || 'What questions do you have?';
+      } else spoken = 'What questions do you have?';
+    }
     await this.say(
       this.outcome === 'DO_NOT_CALL'
         ? 'I am sorry. Your number has been added to our do-not-call list. Goodbye.'
-        : safeReply(this.campaign, reply.text),
+        : safeReply(this.campaign, spoken),
       timing,
       e.endOfSpeechAt,
     );
