@@ -273,9 +273,12 @@ export function TechnicalDetails({
   result?: CallResult;
   live?: ReturnType<typeof liveState>;
 }) {
-  const measured = (result?.latency ?? [])
+  const timings = result?.latency ?? [];
+  const fromFinal = timings.some((l) => l.stt_final_to_audio_ms !== undefined);
+  const measured = timings
     .flatMap((l) =>
-      l.end_of_speech_to_audio_ms === undefined ? [] : [l.end_of_speech_to_audio_ms],
+      (fromFinal ? l.stt_final_to_audio_ms : l.end_of_speech_to_audio_ms) === undefined
+        ? [] : [(fromFinal ? l.stt_final_to_audio_ms : l.end_of_speech_to_audio_ms)!],
     )
     .sort((a, b) => a - b);
   const p = (v: number) =>
@@ -286,11 +289,11 @@ export function TechnicalDetails({
     <Disclosure title="Details">
       <div className="technical-details stack">
         <div className="row">
-          <Chip>Response p50: {p(0.5)}</Chip>
+          <Chip>{fromFinal ? 'Transcript to audio' : 'Endpoint to audio'} p50: {p(0.5)}</Chip>
           <Chip>p95: {p(0.95)}</Chip>
         </div>
         <p className="helper">
-          Latency uses the server’s endpointing receipt as a proxy. Usage is metered, not billed.{' '}
+          Timing runs from the server’s {fromFinal ? 'final transcript' : 'endpointing event'} to its first outgoing audio frame. Phone network delay is excluded. Usage is metered, not billed.{' '}
           {result?.simulation ? 'These observations came from a simulation.' : ''}
         </p>
         {[

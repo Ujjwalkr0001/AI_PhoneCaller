@@ -31,7 +31,9 @@ export const languageSchema = z.enum(languages);
 const text = z.string().trim().max(5000);
 const list = z.array(text).max(50).default([]);
 const sensitive =
-  /religio|caste|marital|pregnan|disabil|health|sexual|ethnic|race\b|age\b|date.of.birth/i;
+  /religio|caste|marital|pregnan|disabil|health|sexual|ethnic|\brace\b|\bage\b|date.of.birth|penis|genital|breast.size|body.measurement/i;
+export const isJobRelatedQuestion = (q: { field_key: string; question: string }) =>
+  !sensitive.test(`${q.field_key} ${q.question}`);
 export const questionSchema = z
   .object({
     question: z.string().min(3).max(500),
@@ -41,7 +43,7 @@ export const questionSchema = z
     expected_answer_hint: text.default(''),
   })
   .refine(
-    (q) => !sensitive.test(`${q.field_key} ${q.question}`),
+      isJobRelatedQuestion,
     'Only job-related, non-sensitive fields are allowed',
   );
 export const campaignSchema = z
@@ -232,6 +234,9 @@ export interface Turn {
   at: string;
 }
 export interface Latency {
+  route?: 'structured' | 'dialogue' | 'control';
+  stt_final_to_audio_ms?: number;
+  tts_cache_hit?: boolean;
   end_of_speech_to_audio_ms?: number;
   stt_final_ms?: number;
   llm_first_token_ms?: number;

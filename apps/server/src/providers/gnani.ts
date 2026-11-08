@@ -2,6 +2,7 @@ import WebSocket from 'ws';
 import { FrameBuffer, sse } from '../audio.js';
 import type { SttClient, SttEvent, TtsClient } from '../contracts.js';
 import { gnaniSttKey, gnaniTtsKey } from '../provider-config.js';
+import { acquireSpeechRequest, retryDelay } from './request-queue.js';
 
 export class GnaniSttClient implements SttClient {
   onTurn = (_e: SttEvent) => {};
@@ -34,7 +35,8 @@ export class GnaniSttClient implements SttClient {
           model: 'prisma-v3.0',
           format: 'codemix',
           'x-sample-rate': '8000',
-          'x-min-silence-ms': '500',
+          'x-min-silence-ms': String(Math.min(1000, Math.max(300,
+            Number(process.env.GNANI_MIN_SILENCE_MS) || 350))),
           'x-vad-threshold': '0.65',
           'x-api-request-id': this.callId,
         },
@@ -54,18 +56,23 @@ export class GnaniSttClient implements SttClient {
             clearTimeout(timeout);
             resolve();
           }
-          if (msg.type === 'speech_start') this.onActivity();
+          if (msg.type === 'speech_start') {
+            this.endAt = undefined;
+            this.onActivity();
+          }
           if (msg.type === 'processing') {
             this.endAt = Date.now();
             this.onActivity();
           }
-          if (msg.type === 'transcript' && msg.text?.trim())
+          if (msg.type === 'transcript' && msg.text?.trim()) {
             this.onTurn({
               text: msg.text,
               language: msg.detected_language_code,
               endOfSpeechAt: this.endAt,
               finalAt: Date.now(),
             });
+            this.endAt = undefined;
+          }
           if (msg.type === 'error') this.onError(new Error('Gnani STT reported an error'));
         } catch {
           this.onError(new Error('Invalid Gnani STT event'));
@@ -113,37 +120,45 @@ export class GnaniTtsClient implements TtsClient {
     signal: AbortSignal,
   ): AsyncGenerator<Buffer> {
     if (!this.key) throw new Error('GNANI_TTS or GNANI_API_KEY is required');
-    const response = await fetch('https://api.vachana.ai/api/v1/tts/sse', {
-      method: 'POST',
-      signal: AbortSignal.any([signal, AbortSignal.timeout(20000)]),
-      headers: {
-        'X-API-Key-ID': this.key,
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-      },
-      body: JSON.stringify({
-        text,
-        language,
-        voice,
-        model: 'timbre-v3.0',
-        speed: 1,
-        audio_config: {
-          sample_rate: 8000,
-          num_channels: 1,
-          sample_width: 2,
-          encoding: 'pcm_mulaw',
-          container: 'mulaw',
-        },
-      }),
-    });
-    let complete = false;
-    for await (const event of sse(response)) {
-      if (event.event === 'error' || event.data.type === 'error')
-        throw new Error('Gnani TTS synthesis failed');
-      if (event.event === 'chunk' && typeof event.data.audio === 'string')
-        yield Buffer.from(event.data.audio, 'base64');
-      if (event.event === 'complete') complete = true;
+    const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(20000)]);
+    const release = await acquireSpeechRequest(this.key, requestSignal);
+    try {
+      let response: Response;
+      for (let attempt = 0; ; attempt++) {
+        response = await fetch('https://api.vachana.ai/api/v1/tts/sse', {
+          method: 'POST',
+          signal: requestSignal,
+          headers: {
+            'X-API-Key-ID': this.key,
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+          },
+          body: JSON.stringify({
+            text, language, voice, model: 'timbre-v3.0', speed: 1,
+            audio_config: {
+              sample_rate: 8000, num_channels: 1, sample_width: 2,
+              encoding: 'pcm_mulaw', container: 'mulaw',
+            },
+          }),
+        });
+        if (![429, 503].includes(response.status) || attempt >= 2) break;
+        const seconds = Number(response.headers.get('retry-after') || '0.75');
+        const pause = Number.isFinite(seconds) ? Math.max(250, seconds * 1000) : 750;
+        if (pause > 2000) break;
+        await response.body?.cancel();
+        await retryDelay(pause, requestSignal);
+      }
+      let complete = false;
+      for await (const event of sse(response)) {
+        if (event.event === 'error' || event.data.type === 'error')
+          throw new Error('Gnani TTS synthesis failed');
+        if (event.event === 'chunk' && typeof event.data.audio === 'string')
+          yield Buffer.from(event.data.audio, 'base64');
+        if (event.event === 'complete') complete = true;
+      }
+      if (!complete) throw new Error('Gnani TTS stream ended without completion');
+    } finally {
+      release();
     }
-    if (!complete) throw new Error('Gnani TTS stream ended without completion');
   }
 }

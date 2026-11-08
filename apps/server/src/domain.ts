@@ -190,7 +190,7 @@ export function eligibility(c: Campaign, fields: Record<string, unknown>) {
         .trim()
         .toLowerCase(),
       expected = q.expected_answer_hint.trim().toLowerCase();
-    if (!answer || !expected) {
+    if (!answer || !expected || answer === 'unknown') {
       unclear++;
       reasons.push(`${q.field_key}: missing answer or explicit expected answer`);
     } else if (answer !== expected) {

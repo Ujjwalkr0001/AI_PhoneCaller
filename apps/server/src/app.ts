@@ -587,6 +587,8 @@ export async function buildApp(store: Store, platform: Platform) {
           .map((l) => l.end_of_speech_to_audio_ms)
           .filter((n): n is number => n !== undefined),
       );
+      const responseLatency = rows.flatMap((r) => r.latency
+        .map((l) => l.stt_final_to_audio_ms).filter((n): n is number => n !== undefined));
       const group = (keys: string[]) =>
         Object.fromEntries([...new Set(keys)].map((k) => [k, keys.filter((x) => x === k).length]));
       return {
@@ -600,6 +602,8 @@ export async function buildApp(store: Store, platform: Platform) {
           : null,
         p50_ms: percentile(latency, 0.5),
         p95_ms: percentile(latency, 0.95),
+        transcript_to_audio_p50_ms: percentile(responseLatency, 0.5),
+        transcript_to_audio_p95_ms: percentile(responseLatency, 0.95),
         outcomes: group(rows.map((r) => r.outcome)),
         languages: group(rows.flatMap((r) => r.languages)),
         days: group(

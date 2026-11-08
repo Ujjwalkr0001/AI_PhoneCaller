@@ -14,6 +14,14 @@ Inspect the per-call provider trace and monitor errors. Missing keys show as mis
 
 Set or rotate fallback keys on the server, verify the providers' own language/voice support, then test a teammate call. Unsupported/unavailable languages must not be marketed as supported merely because an environment variable exists. Existing fallback wrappers are retained from the prototype; live fallback compatibility remains unverified.
 
+## Recruitment flow and response delay
+
+Recruitment uses a server-owned question list: relevant experience, must-have skills, other configured role questions, salary, location, notice period, then interview availability. Each question keeps its configured field key. Repeats and candidate questions do not advance the list; explicit skips are saved as unknown. The server asks all questions before role Q&A and follow-up consent. Clearly unrelated personal questions are rejected in new configurations and omitted from legacy call plans. The effective plan is saved in the call snapshot. Groq answers candidate questions using approved role facts and generates the post-call note; it cannot skip interview stages.
+
+Routine recruitment answers avoid a model round trip. The next fixed question is prepared during current playback in a per-call memory cache, canceled when the call ends, and included in generated TTS character usage. Speech requests are serialized per Gnani key. HTTP 429/503 responses receive at most two short retries before any audio has been emitted; long retry windows and exhausted retries remain visible failures. This avoids overlapping background work with active synthesis and replaying spoken audio.
+
+`GNANI_MIN_SILENCE_MS` defaults to 350 ms and is bounded to 300-1000 ms. Raise it if a caller's natural pauses are split. Logs include `screening_question` ordinal/field IDs and `latency` route, cache hit, TTS startup and final-transcript-to-first-audio timing. The Details view reports the latter separately from endpoint-event timing. These are server measurements; they exclude phone playback and carrier delay. Local provider checks are saved in ignored `output/live/structured-latency-check.json` and `output/live/structured-interview-check.json` when run.
+
 ## Twilio outage or signature failure
 
 Pause dialing, check account status/trial verified numbers/geographic permissions, `TWILIO_WEBHOOK_BASE_URL` (or deployed `PUBLIC_BASE_URL`), exact query string, number configuration and Twilio debugger. Use [Twilio security documentation](https://www.twilio.com/docs/usage/security); never turn off signature validation. Status events are idempotently handled after terminal results. The sweeper reconciles stale calls. Do not indiscriminately retry failed commercial calls.

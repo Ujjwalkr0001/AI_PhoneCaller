@@ -111,6 +111,66 @@ describe('full mock pipeline', () => {
     await utter(p, 'Not interested');
     expect(results[0].outcome).toBe('CANDIDATE_DECLINED');
   });
+  it('finishes every configured screening question in order without LLM calls for answers', async () => {
+    const { p, events, results } = fixture('hr');
+    p.campaign.screening_questions.push({
+      question: 'When could you start?', field_key: 'notice_period', required: false,
+      must_have: false, expected_answer_hint: '',
+    });
+    const dialogue = vi.spyOn(p.dialogue, 'reply');
+    await p.start();
+    await utter(p, 'Yes, please.');
+    await utter(p, 'No, I have not used TypeScript.');
+    expect(p.fields.typescript).toBe('no');
+    expect(p.transcript.at(-1)?.text).toBe('When could you start?');
+    await utter(p, 'Please repeat the question.');
+    expect(p.fields.notice_period).toBeUndefined();
+    await utter(p, 'In thirty days.');
+    expect(p.flow.stage).toBe('OBJECTIONS_QA');
+    await utter(p, 'No questions.');
+    expect(p.flow.stage).toBe('CLOSE');
+    await utter(p, 'Yes, the team can follow up.');
+    expect(results[0].outcome).toBe('CANDIDATE_COMPLETED');
+    expect(results[0].extracted_fields).toMatchObject({
+      typescript: 'no', notice_period: 'In thirty days.', consent_to_follow_up: true,
+    });
+    expect(dialogue).not.toHaveBeenCalled();
+    expect(events.filter((e) => e.type === 'screening_question').map((e) => e.data)).toMatchObject([
+      { field_key: 'typescript', ordinal: 1 }, { field_key: 'notice_period', ordinal: 2 },
+    ]);
+    expect(results[0].latency.some((t) => t.route === 'structured' && t.stt_final_to_audio_ms !== undefined)).toBe(true);
+  });
+  it('answers candidate questions without allowing the model to skip screening', async () => {
+    const { p } = fixture('hr');
+    vi.spyOn(p.dialogue, 'reply').mockResolvedValue({
+      text: 'The team will follow up with that information.', tokens: 1,
+      tools: [{ name: 'advance_stage', args: { stage: 'WRAP_UP' } }],
+    });
+    await p.start();
+    await utter(p, 'Yes');
+    await utter(p, 'What is the salary?');
+    expect(p.flow.stage).toBe('DISCOVERY_SCREENING');
+    expect(p.fields.typescript).toBeUndefined();
+    expect(p.transcript.at(-1)?.text).toContain('Can you use TypeScript?');
+    await utter(p, 'I prefer not to answer.');
+    expect(p.fields.typescript).toBe('unknown');
+    expect(p.flow.stage).toBe('OBJECTIONS_QA');
+  });
+  it('captures technical experience without mistaking domain words for handoff or callback requests', async () => {
+    const { p } = fixture('hr');
+    p.campaign.screening_questions = [{
+      question: 'Describe your software experience.', field_key: 'relevant_experience',
+      required: true, must_have: false, expected_answer_hint: '',
+    }];
+    await p.start();
+    await utter(p, 'Yes');
+    const answer = 'I built callback APIs for human resources teams.';
+    await utter(p, answer);
+    expect(p.fields.relevant_experience).toBe(answer);
+    expect(p.flow.stage).toBe('OBJECTIONS_QA');
+    expect(p.callbackAt).toBeUndefined();
+    expect(p.tools.some((t) => ['schedule_callback', 'request_handoff'].includes(t.name))).toBe(false);
+  });
   it('asks screening after permission and repeats it without skipping to follow-up consent', async () => {
     const { p } = fixture('hr');
     const dialogue = vi.spyOn(p.dialogue, 'reply').mockResolvedValue({
@@ -119,14 +179,16 @@ describe('full mock pipeline', () => {
     await p.start();
     await utter(p, 'Yes, please tell.');
     expect(p.flow.stage).toBe('DISCOVERY_SCREENING');
-    expect(p.transcript.at(-1)?.text).toBe('Can you use TypeScript?');
+    expect(p.transcript.at(-1)?.text).toContain('Can you use TypeScript?');
     expect(dialogue).not.toHaveBeenCalled();
     await utter(p, 'Sorry, can you please repeat the question?');
     expect(p.transcript.at(-1)?.text).toBe('Can you use TypeScript?');
     expect(dialogue).not.toHaveBeenCalled();
     expect(p.fields).toEqual({});
     await utter(p, 'Yes, I can.');
-    expect(p.transcript.at(-1)?.text).toBe('Can you use TypeScript?');
+    expect(p.flow.stage).toBe('OBJECTIONS_QA');
+    expect(p.fields.typescript).toBe('yes');
+    expect(dialogue).not.toHaveBeenCalled();
     expect(p.fields.consent_to_follow_up).toBeUndefined();
   });
   it('voicemail terminal result contains no invented transcript', async () => {

@@ -22,6 +22,8 @@ import { FrameBuffer } from './audio.js';
 import { redactSensitive } from './security.js';
 import { analyzeCall } from './analysis.js';
 import { parseCallbackPhrase } from '../../../src/utils/time-parser.js';
+import { isCandidateQuestion, recruitmentQuestions, screeningAnswer, verbalConsent } from './recruitment.js';
+import { PreparedSpeech } from './providers/prepared-speech.js';
 export interface PipelineHooks {
   event(type: string, data: unknown): void;
   suppress(): Promise<void>;
@@ -52,6 +54,16 @@ export class ConversationPipeline {
   private busy = false;
   private toolResult: unknown;
   private repeatCount = 0;
+  private hrIndex = 0;
+  private hrClarified = new Set<string>();
+  private lastQuestion = '';
+  private speech: PreparedSpeech;
+  private responseContext?: {
+    generation: number;
+    finalAt: number;
+    endAt?: number;
+    timing: CallResult['latency'][number];
+  };
   private resolveIntro!: () => void;
   private introDone = new Promise<void>((resolve) => {
     this.resolveIntro = resolve;
@@ -70,6 +82,20 @@ export class ConversationPipeline {
     private firstName = '',
   ) {
     this.language = campaign.languages[0];
+    if (campaign.type === 'hr') {
+      const plan = recruitmentQuestions(campaign);
+      this.campaign = { ...campaign, screening_questions: plan.length ? plan : [{
+        question: 'What job-related experience would you like to share?',
+        field_key: 'relevant_experience', required: true, must_have: false, expected_answer_hint: '',
+      }] };
+    }
+    this.speech = new PreparedSpeech(tts, async (chars) => {
+      this.ttsChars += chars;
+      if (this.hooks.usage && !(await this.hooks.usage(this.sttSeconds, this.ttsChars))) {
+        this.ttsChars -= chars;
+        throw new Error('Usage cap reached');
+      }
+    });
   }
   provider(provider: string, event: string) {
     const trace = { provider, event, at: new Date().toISOString() };
@@ -104,7 +130,9 @@ export class ConversationPipeline {
       this.hooks.event('exit', 'TIMEOUT');
       void this.finish(this.outcome ?? 'INCOMPLETE', 'duration_limit');
     }, this.campaign.max_call_duration_s * 1000);
-    await this.say(opening(this.campaign, this.firstName));
+    await this.say(opening(this.campaign, this.firstName), undefined, undefined, () => {
+      if (this.campaign.type === 'hr' && !this.simulation) this.prepareHrQuestion(0);
+    });
     this.flow.advance('PERMISSION');
     this.resolveIntro();
     this.hooks.event('stage', this.flow.stage);
@@ -150,6 +178,109 @@ export class ConversationPipeline {
     this.transcript.push(turn);
     this.hooks.event('transcript', turn);
   }
+  private advance(stage: Parameters<CallFlow['advance']>[0]) {
+    this.flow.advance(stage);
+    this.hooks.event('stage', stage);
+  }
+  private hrPrompt(index: number) {
+    const question = this.campaign.screening_questions[index]?.question;
+    if (!question) return '';
+    const role = this.campaign.job_title.trim();
+    return index === 0 && role && role.toLowerCase() !== 'your role'
+      ? `Thank you. This is a brief screening for the ${role} position. ${question}`
+      : question;
+  }
+  private prepareHrQuestion(index: number) {
+    const text = this.hrPrompt(index);
+    if (text) this.speech.prepare(text, this.language,
+      this.campaign.voice[this.language as Campaign['languages'][number]] ?? 'Shivani');
+  }
+  private async askHrQuestion(index: number) {
+    this.hrIndex = index;
+    this.lastQuestion = this.campaign.screening_questions[index].question;
+    this.hooks.event('screening_question', {
+      field_key: this.campaign.screening_questions[index].field_key,
+      ordinal: index + 1, total: this.campaign.screening_questions.length,
+    });
+    await this.say(this.hrPrompt(index), undefined, undefined, () => {
+      if (!this.simulation) this.prepareHrQuestion(index + 1);
+    });
+    this.armIdle();
+  }
+  private async structuredRecruitment(text: string) {
+    if (this.responseContext) this.responseContext.timing.route = 'structured';
+    if (this.flow.stage === 'PERMISSION') {
+      if (isCandidateQuestion(text)) return false;
+      if (verbalConsent(text) === true) {
+        this.advance('DISCOVERY_SCREENING');
+        await this.askHrQuestion(0);
+      } else {
+        await this.say('Is this a good time for a brief job-related screening?');
+        this.armIdle();
+      }
+      return true;
+    }
+    if (this.flow.stage === 'DISCOVERY_SCREENING') {
+      if (isCandidateQuestion(text)) return false;
+      const q = this.campaign.screening_questions[this.hrIndex];
+      if (!/^(yes|no)$/i.test(q.expected_answer_hint.trim()) && /^(yes|yeah|no|okay|ok|sure)[.!\s]*$/i.test(text)) {
+        if (!this.hrClarified.has(q.field_key)) {
+          this.hrClarified.add(q.field_key);
+          await this.say(`Could you give a brief answer in your own words? ${q.question}`);
+          this.armIdle();
+          return true;
+        }
+        text = 'unknown';
+      }
+      const result = await this.tool({ name: 'capture_fields', args: {
+        fields: { [q.field_key]: screeningAnswer(text.slice(0, 500), q.expected_answer_hint) },
+      } }, text);
+      if (result && typeof result === 'object' && 'error' in result) {
+        await this.say(`Please keep your answer focused on the role. ${q.question}`);
+        this.armIdle();
+        return true;
+      }
+      if (this.hrIndex + 1 < this.campaign.screening_questions.length) {
+        await this.askHrQuestion(this.hrIndex + 1);
+      } else {
+        this.advance('PITCH_ROLE_INTRO');
+        this.advance('OBJECTIONS_QA');
+        this.lastQuestion = 'What questions do you have about the role?';
+        await this.say(`${this.campaign.role_summary.trim()} ${this.lastQuestion}`.trim());
+        this.armIdle();
+      }
+      return true;
+    }
+    if (this.flow.stage === 'OBJECTIONS_QA') {
+      if (/^(?:no(?: more)?(?: questions)?|none|nothing|that.s all|all clear)[.!\s]*$/i.test(text)) {
+        this.advance('CLOSE');
+        this.lastQuestion = 'May the team follow up with you about the next steps?';
+        await this.say(this.lastQuestion);
+        this.armIdle();
+        return true;
+      }
+      if (/^(?:tell me more|continue|go ahead)[.!\s]*$/i.test(text)) {
+        await this.say(`${this.campaign.role_summary.trim()} What questions do you have about the role?`.trim());
+        this.armIdle();
+        return true;
+      }
+      return false;
+    }
+    if (this.flow.stage === 'CLOSE') {
+      const consent = verbalConsent(text);
+      if (consent === undefined) {
+        await this.say(this.lastQuestion);
+        this.armIdle();
+      } else {
+        await this.tool({ name: 'capture_fields', args: { fields: { consent_to_follow_up: consent } } }, text);
+        this.advance('WRAP_UP');
+        await this.say('Thank you for your time. Goodbye.');
+        await this.finish('CANDIDATE_COMPLETED', 'screening_completed');
+      }
+      return true;
+    }
+    return false;
+  }
   async turn(e: SttEvent) {
     if (this.flow.stage === 'GREETING_DISCLOSURE') await this.introDone;
     if (this.finishing) return;
@@ -158,6 +289,10 @@ export class ConversationPipeline {
     this.bargeIn();
     const token = ++this.generation;
     this.abort = new AbortController();
+    this.responseContext = {
+      generation: token, finalAt: e.finalAt, endAt: e.endOfSpeechAt,
+      timing: { route: 'control', stt_final_ms: e.endOfSpeechAt ? e.finalAt - e.endOfSpeechAt : undefined },
+    };
     this.busy = true;
     const text = redactSensitive(e.text.trim(), this.campaign.type === 'hr');
     this.record('caller', text);
@@ -190,9 +325,9 @@ export class ConversationPipeline {
       await this.say('I am sorry for the interruption. Goodbye.');
       return this.finish('NOT_INTERESTED');
     }
-    if (/\brepeat\b|say (?:that|it|the question) again|come again|didn.t (?:hear|catch)/i.test(text)) {
+    if (/please repeat|(?:can|could) you repeat|repeat (?:that|it|the question)|^repeat[.!]?\s*$|say (?:that|it|the question) again|come again|didn.t (?:hear|catch)/i.test(text)) {
       const previous = this.transcript.filter((turn) => turn.role === 'agent').at(-1);
-      await this.say(previous?.text ?? 'Is this a good time?');
+      await this.say(this.lastQuestion || previous?.text || 'Is this a good time?');
       this.armIdle();
       return;
     }
@@ -213,7 +348,7 @@ export class ConversationPipeline {
       await this.say('Thank you for your time. Goodbye.');
       return this.finish(this.campaign.type === 'hr' ? 'CANDIDATE_DECLINED' : 'NOT_INTERESTED');
     }
-    if (/call me (later|tomorrow|after)|call back|callback|कल.*कॉल/i.test(text)) {
+    if (/call me (later|tomorrow|after)|call (?:me )?back|schedule.*callback|callback.*(?:tomorrow| at | on )|कल.*कॉल/i.test(text)) {
       const result = await this.tool(
         { name: 'schedule_callback', args: { when_text: text } },
         text,
@@ -235,7 +370,7 @@ export class ConversationPipeline {
       this.armIdle();
       return;
     }
-    if (/human|person please|speak to.*team/i.test(text)) {
+    if (/(?:speak|talk|connect|transfer).*(?:human|person|team)|(?:human|person) please/i.test(text)) {
       await this.tool({ name: 'request_handoff', args: {} }, text);
       await this.say(
         'I can arrange a callback from the team. What exact day and time works for you?',
@@ -247,6 +382,7 @@ export class ConversationPipeline {
       await this.say('Understood. Goodbye.');
       return this.finish('NOT_INTERESTED');
     }
+    if (this.campaign.type === 'hr' && await this.structuredRecruitment(text)) return;
     if (
       this.flow.stage === 'PERMISSION' &&
       /\b(yes|sure|okay|ok|please|go ahead|good time)\b|हाँ|हां/i.test(text)
@@ -260,9 +396,8 @@ export class ConversationPipeline {
       this.armIdle();
       return;
     }
-    const timing: CallResult['latency'][number] = {
-      stt_final_ms: e.endOfSpeechAt ? e.finalAt - e.endOfSpeechAt : undefined,
-    };
+    const timing = this.responseContext.timing;
+    timing.route = 'dialogue';
     const began = Date.now();
     const reply = await this.dialogue.reply(
       this.campaign,
@@ -277,30 +412,38 @@ export class ConversationPipeline {
     if (token !== this.generation || this.finishing) return;
     this.tokens += reply.tokens;
     const results: unknown[] = [];
-    for (const tool of reply.tools) results.push(await this.tool(tool, text));
+    for (const tool of reply.tools) {
+      if (this.campaign.type === 'hr' && ['capture_fields', 'advance_stage', 'end_call', 'set_interest_level'].includes(tool.name)) continue;
+      results.push(await this.tool(tool, text));
+    }
     this.toolResult = results;
     let spoken = reply.text;
-    if (/may (?:the )?team follow up with you/i.test(spoken) && this.flow.stage !== 'CLOSE') {
+    if (this.campaign.type === 'hr') {
+      spoken = (spoken.match(/[^.!?]+[.!?]?/g) ?? [])
+        .filter((sentence) => !sentence.includes('?')).join(' ').trim()
+        || 'The team will follow up with that information.';
+      spoken = safeReply(this.campaign, spoken);
+      if (/may (?:the )?team follow up/i.test(spoken)) spoken = 'The team will follow up with that information.';
+      if (this.flow.stage === 'DISCOVERY_SCREENING') spoken += ` ${this.lastQuestion}`;
+      else if (this.flow.stage === 'PERMISSION') spoken += ' Is this a good time for a brief screening?';
+      else if (this.flow.stage === 'OBJECTIONS_QA') spoken += ' What other questions do you have about the role?';
+    } else if (/may (?:the )?team follow up with you/i.test(spoken) && this.flow.stage !== 'CLOSE') {
       const pending = questions(this.campaign).find((q) => this.fields[q.field_key] === undefined);
       if (this.flow.stage === 'PERMISSION') spoken = 'Is this a good time?';
       else if (this.flow.stage === 'DISCOVERY_SCREENING' && pending) spoken = pending.question;
       else if (this.flow.stage === 'DISCOVERY_SCREENING') {
         this.flow.advance('PITCH_ROLE_INTRO');
         this.hooks.event('stage', this.flow.stage);
-        spoken = this.campaign.type === 'hr'
-          ? this.campaign.role_summary || 'What questions do you have?'
-          : this.campaign.product_description || this.campaign.fact_sheet || 'What questions do you have?';
+        spoken = this.campaign.product_description || this.campaign.fact_sheet || 'What questions do you have?';
       } else spoken = 'What questions do you have?';
     }
     await this.say(
       this.outcome === 'DO_NOT_CALL'
         ? 'I am sorry. Your number has been added to our do-not-call list. Goodbye.'
-        : safeReply(this.campaign, spoken),
+        : this.campaign.type === 'hr' ? spoken : safeReply(this.campaign, spoken),
       timing,
       e.endOfSpeechAt,
     );
-    this.latency.push(timing);
-    this.hooks.event('latency', timing);
     this.busy = false;
     if (
       this.outcome === 'DO_NOT_CALL' ||
@@ -406,38 +549,40 @@ export class ConversationPipeline {
     this.hooks.event('fields', this.fields);
     return result;
   }
-  private async say(text: string, timing?: CallResult['latency'][number], endAt?: number) {
+  private async say(text: string, timing?: CallResult['latency'][number], endAt?: number, onFirstAudio?: () => void) {
     if (!text.trim()) return;
     const signal = this.abort.signal,
       frames = new FrameBuffer(160),
       began = Date.now();
+    const context = this.responseContext?.generation === this.generation ? this.responseContext : undefined;
+    timing ??= context?.timing;
+    endAt ??= context?.endAt;
+    const voice = this.campaign.voice[this.language as Campaign['languages'][number]] ?? 'Shivani';
+    if (timing) timing.tts_cache_hit = this.speech.has(text, this.language, voice);
     let first = true;
     this.busy = true;
-    this.ttsChars += text.length;
     if (this.hooks.usage && !(await this.hooks.usage(this.sttSeconds, this.ttsChars)))
       throw new Error('Usage cap reached');
     this.record('agent', text);
-    const sentences = text.match(/[^.!?।]+[.!?।]?/g) ?? [text];
-    for (const sentence of sentences) {
-      for await (const chunk of this.tts.synthesize(
-        sentence.trim(),
-        this.language,
-        this.campaign.voice[this.language as Campaign['languages'][number]] ?? 'Shivani',
-        signal,
-      )) {
-        if (signal.aborted) return;
-        if (first) {
-          first = false;
-          if (timing) {
-            timing.tts_first_byte_ms = Date.now() - began;
-            if (endAt) timing.end_of_speech_to_audio_ms = Date.now() - endAt;
+    for await (const chunk of this.speech.synthesize(text, this.language, voice, signal)) {
+      if (signal.aborted) return;
+      if (first) {
+        first = false;
+        onFirstAudio?.();
+        if (timing) {
+          timing.tts_first_byte_ms = Date.now() - began;
+          if (context) timing.stt_final_to_audio_ms = Date.now() - context.finalAt;
+          if (endAt) timing.end_of_speech_to_audio_ms = Date.now() - endAt;
+          if (!this.latency.includes(timing)) {
+            this.latency.push(timing);
+            this.hooks.event('latency', timing);
           }
         }
-        for (const frame of frames.push(chunk)) this.transport.audio(frame);
       }
+      for (const frame of frames.push(chunk)) this.transport.audio(frame);
     }
     for (const frame of frames.flush(255)) this.transport.audio(frame);
-    for (let i = 0; i < 15; i++) this.transport.audio(Buffer.alloc(160, 255));
+    for (let i = 0; i < 2; i++) this.transport.audio(Buffer.alloc(160, 255));
     await this.transport.mark(`turn-${this.generation}`);
     this.busy = false;
   }
@@ -458,6 +603,7 @@ export class ConversationPipeline {
     this.resolveIntro();
     this.abort.abort();
     this.stt.close();
+    this.speech.close();
     const completed = this.flow.stage === 'WRAP_UP';
     const finalOutcome =
       outcome ??

@@ -44,6 +44,7 @@ it('Prisma auth/config, final events and exactly 1024-byte paced PCM against a l
     expect(headers['x-api-key-id']).toBe('synthetic-key');
     expect(headers.language_code).toBe('en-IN');
     expect(headers['x-sample-rate']).toBe('8000');
+    expect(headers['x-min-silence-ms']).toBe('350');
     expect(frames.map((f) => f.length)).toEqual([1024, 1024]);
     expect(frames[1].at - frames[0].at).toBeGreaterThanOrEqual(45);
     expect(turn).toHaveBeenCalledWith(
@@ -97,6 +98,27 @@ it('Timbre rejects truncated responses instead of pretending completion', async 
       }
     })(),
   ).rejects.toThrow('without completion');
+});
+it('serializes speech requests per key and retries a rate limit before emitting audio', async () => {
+  let active = 0, peak = 0, requests = 0;
+  const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+    peak = Math.max(peak, ++active);
+    await new Promise((r) => setTimeout(r, 10));
+    active--;
+    if (++requests === 1) return new Response('', { status: 429, headers: { 'retry-after': '0' } });
+    return new Response('event: chunk\ndata: {"audio":"//8="}\n\nevent: complete\ndata: {}\n\n');
+  });
+  const collect = async () => {
+    const chunks = [];
+    for await (const chunk of new GnaniTtsClient('same-synthetic-key').synthesize(
+      'Hello', 'en-IN', 'Shivani', new AbortController().signal,
+    )) chunks.push(chunk);
+    return Buffer.concat(chunks);
+  };
+  const audio = await Promise.all([collect(), collect()]);
+  expect(peak).toBe(1);
+  expect(fetch).toHaveBeenCalledTimes(3);
+  expect(audio).toEqual([Buffer.from([255, 255]), Buffer.from([255, 255])]);
 });
 it('STT startup failover is visible and does not silently select mocks', async () => {
   const broken = new MockStt();
