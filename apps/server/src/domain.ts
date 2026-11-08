@@ -214,7 +214,7 @@ export function eligibility(c: Campaign, fields: Record<string, unknown>) {
 }
 export function shouldSubmit(result: CallResult) {
   return (
-    result.outcome === 'CANDIDATE_COMPLETED' ||
+    (result.outcome === 'CANDIDATE_COMPLETED' && result.extracted_fields.consent_to_follow_up === true) ||
     result.outcome === 'CANDIDATE_DECLINED' ||
     (['INTERESTED_HOT', 'INTERESTED_WARM'].includes(result.outcome) &&
       result.extracted_fields.consent_to_follow_up === true)

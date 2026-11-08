@@ -218,6 +218,36 @@ describe('full mock pipeline', () => {
     expect(p.fields.typescript).toBe('unknown');
     expect(p.transcript.at(-1)?.text).toContain("couldn't confirm");
   });
+  it.each(['No question.', 'Okay, thank you for asking.'])('moves beyond Q&A after %s without repeating the invitation', async (completion) => {
+    const {p, results} = fixture('hr');
+    const dialogue = vi.spyOn(p.dialogue, 'reply').mockResolvedValue({
+      text: 'The team will follow up with that information.', tools: [], tokens: 1,
+    });
+    await p.start(); await utter(p, 'Yes'); await utter(p, 'Yes');
+    await utter(p, 'How many hours do we have to work?');
+    expect(p.transcript.at(-1)?.text).toBe('The team will follow up with that information.');
+    await utter(p, 'Please repeat that.');
+    expect(p.transcript.at(-1)?.text).toBe('The team will follow up with that information.');
+    await utter(p, 'What is the location?');
+    expect(p.flow.stage).toBe('OBJECTIONS_QA');
+    await utter(p, completion);
+    expect(p.flow.stage).toBe('CLOSE');
+    expect(p.transcript.at(-1)?.text).toBe('May the team follow up with you about the next steps?');
+    await utter(p, 'No, thank you.');
+    expect(results[0]).toMatchObject({outcome: 'CANDIDATE_COMPLETED', follow_up_eligible: false});
+    expect(dialogue).toHaveBeenCalledTimes(2);
+    expect(p.transcript.filter(t=>t.role==='agent' && /questions.*about the role/i.test(t.text))).toHaveLength(1);
+  });
+  it.each(['OBJECTIONS_QA', 'CLOSE'])('honors a request to end the call at %s', async (stage) => {
+    const {p, results} = fixture('hr');
+    const dialogue = vi.spyOn(p.dialogue, 'reply');
+    await p.start(); await utter(p, 'Yes'); await utter(p, 'Yes');
+    if (stage === 'CLOSE') await utter(p, 'No question');
+    await utter(p, 'We can cut the call');
+    expect(results[0]).toMatchObject({outcome: 'CANDIDATE_COMPLETED', end_reason: 'candidate_requested_end', follow_up_eligible: false});
+    expect(p.transcript.at(-1)?.text).toBe('Thank you for your time. Goodbye.');
+    expect(dialogue).not.toHaveBeenCalled();
+  });
   it('captures technical experience without mistaking domain words for handoff or callback requests', async () => {
     const { p } = fixture('hr');
     p.campaign.screening_questions = [{

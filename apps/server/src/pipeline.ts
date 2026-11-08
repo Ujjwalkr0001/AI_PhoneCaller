@@ -22,7 +22,7 @@ import { FrameBuffer } from './audio.js';
 import { redactSensitive } from './security.js';
 import { analyzeCall } from './analysis.js';
 import { parseCallbackPhrase } from '../../../src/utils/time-parser.js';
-import { isCandidateQuestion, mustHaveAnswer, recruitmentQuestions, requirementRejection, screeningAnswer, verbalConsent } from './recruitment.js';
+import { isCandidateQuestion, mustHaveAnswer, recruitmentQaCompletion, recruitmentQuestions, requirementRejection, screeningAnswer, verbalConsent } from './recruitment.js';
 import { PreparedSpeech } from './providers/prepared-speech.js';
 export interface PipelineHooks {
   event(type: string, data: unknown): void;
@@ -233,6 +233,12 @@ export class ConversationPipeline {
   }
   private async structuredRecruitment(text: string) {
     if (this.responseContext) this.responseContext.timing.route = 'structured';
+    if ((this.flow.stage === 'OBJECTIONS_QA' || this.flow.stage === 'CLOSE')
+      && recruitmentQaCompletion(text) === 'finish') {
+      await this.say('Thank you for your time. Goodbye.');
+      await this.finish('CANDIDATE_COMPLETED', 'candidate_requested_end');
+      return true;
+    }
     if (this.flow.stage === 'PERMISSION') {
       if (isCandidateQuestion(text)) return false;
       if (verbalConsent(text) === true) {
@@ -285,7 +291,7 @@ export class ConversationPipeline {
       return true;
     }
     if (this.flow.stage === 'OBJECTIONS_QA') {
-      if (/^(?:no(?: more)?(?: questions)?|none|nothing|that.s all|all clear)[.!\s]*$/i.test(text)) {
+      if (recruitmentQaCompletion(text) === 'close') {
         this.advance('CLOSE');
         this.lastQuestion = 'May the team follow up with you about the next steps?';
         await this.say(this.lastQuestion);
@@ -293,7 +299,8 @@ export class ConversationPipeline {
         return true;
       }
       if (/^(?:tell me more|continue|go ahead)[.!\s]*$/i.test(text)) {
-        await this.say(`${this.campaign.role_summary.trim()} What questions do you have about the role?`.trim());
+        this.lastQuestion = '';
+        await this.say(this.hrRoleInformation());
         this.armIdle();
         return true;
       }
@@ -459,7 +466,7 @@ export class ConversationPipeline {
       if (/may (?:the )?team follow up/i.test(spoken)) spoken = 'The team will follow up with that information.';
       if (this.flow.stage === 'DISCOVERY_SCREENING' || this.flow.stage === 'PITCH_ROLE_INTRO') spoken += ` ${this.lastQuestion}`;
       else if (this.flow.stage === 'PERMISSION') spoken += ' Is this a good time for a brief screening?';
-      else if (this.flow.stage === 'OBJECTIONS_QA') spoken += ' What other questions do you have about the role?';
+      else if (this.flow.stage === 'OBJECTIONS_QA') this.lastQuestion = '';
     } else if (/may (?:the )?team follow up with you/i.test(spoken) && this.flow.stage !== 'CLOSE') {
       const pending = questions(this.campaign).find((q) => this.fields[q.field_key] === undefined);
       if (this.flow.stage === 'PERMISSION') spoken = 'Is this a good time?';

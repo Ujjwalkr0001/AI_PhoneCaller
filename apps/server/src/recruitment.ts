@@ -98,3 +98,15 @@ export function screeningAnswer(text: string, expected: string) {
 export function isCandidateQuestion(text: string) {
   return /\?$/.test(text) || /^(what|why|how|where|who|which|can you|could you|tell me|explain)\b/i.test(text);
 }
+
+/** Recognize conversational ways of finishing Q&A without swallowing a real question. */
+export function recruitmentQaCompletion(text: string): 'close' | 'finish' | undefined {
+  const normalized = text.toLowerCase().replace(/[’]/g, "'")
+    .replace(/[,.!?;:]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/\b(?:(?:we|you) can|let's|please|can (?:we|you)|i (?:want|need|would like) to)\s+(?:end|cut|disconnect|stop)(?:\s+(?:the|this))?\s+call\b/.test(normalized)
+    || /^(?:please )?(?:end|cut|disconnect|stop) (?:the |this )?call(?: now)?$|^(?:please )?hang up(?: now)?$/.test(normalized)) return 'finish';
+  const completion = /^(?:no(?: more| other| further)?(?: questions?| doubts?)?|none|nothing(?: else)?|that's all|that is all|that's it|that answers my question|all clear|i (?:have no|don't have(?: any)?|do not have(?: any)?) (?:more |other |further )?(?:questions?|doubts?))(?: for now| at the moment| from my side)?(?: thanks| thank you)?$/;
+  const acknowledgement = /^(?:(?:okay|ok|alright|understood|got it|sounds good)(?: )?)*(?:thank you(?: for (?:asking|explaining|the information|your time))?|thanks)?$|^yes (?:thanks|thank you)$/;
+  if (completion.test(normalized.replace(/^no (?=no\b|i\b)/, '')) || (normalized && acknowledgement.test(normalized))) return 'close';
+  return undefined;
+}
