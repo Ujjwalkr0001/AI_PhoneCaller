@@ -30,6 +30,7 @@ export interface DialogueReply {
   text: string;
   tools: ToolCall[];
   tokens: number;
+  qa_status?: 'question' | 'done' | 'end_call' | 'unclear';
 }
 export interface DialogueClient {
   name: string;

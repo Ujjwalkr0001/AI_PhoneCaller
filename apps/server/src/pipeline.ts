@@ -22,7 +22,7 @@ import { FrameBuffer } from './audio.js';
 import { redactSensitive } from './security.js';
 import { analyzeCall } from './analysis.js';
 import { parseCallbackPhrase } from '../../../src/utils/time-parser.js';
-import { isCandidateQuestion, mustHaveAnswer, recruitmentQaCompletion, recruitmentQuestions, requirementRejection, screeningAnswer, verbalConsent } from './recruitment.js';
+import { isCandidateQuestion, mustHaveAnswer, recruitmentQaCompletion, recruitmentQuestions, requirementRejection, screeningAnswer, screeningAnswerNeedsClarification, verbalConsent } from './recruitment.js';
 import { PreparedSpeech } from './providers/prepared-speech.js';
 export interface PipelineHooks {
   event(type: string, data: unknown): void;
@@ -56,6 +56,9 @@ export class ConversationPipeline {
   private repeatCount = 0;
   private hrIndex = 0;
   private hrClarified = new Set<string>();
+  private hrQaUnclear = 0;
+  private hrQaUnavailable = 0;
+  private hrCloseClarifications = 0;
   private lastQuestion = '';
   private speech: PreparedSpeech;
   private responseContext?: {
@@ -231,6 +234,23 @@ export class ConversationPipeline {
     });
     this.armIdle();
   }
+  private async closeRecruitmentQa(reason: string, prefix = '') {
+    this.hooks.event('qa_progress', {action: 'closing', reason});
+    this.advance('CLOSE');
+    this.lastQuestion = 'May the team follow up with you about the next steps?';
+    await this.say(`${prefix ? `${prefix} ` : ''}${this.lastQuestion}`);
+    this.armIdle();
+  }
+  private async unclearRecruitmentQa() {
+    this.hooks.event('qa_progress', {action: 'unclear', count: ++this.hrQaUnclear});
+    if (this.hrQaUnclear >= 2) {
+      await this.closeRecruitmentQa('unclear_limit', "Let's finish the screening here.");
+    } else {
+      this.lastQuestion = '';
+      await this.say("I couldn't make out a question. Please ask it now, or say no questions if you're finished.");
+      this.armIdle();
+    }
+  }
   private async structuredRecruitment(text: string) {
     if (this.responseContext) this.responseContext.timing.route = 'structured';
     if ((this.flow.stage === 'OBJECTIONS_QA' || this.flow.stage === 'CLOSE')
@@ -255,7 +275,8 @@ export class ConversationPipeline {
       const q = this.campaign.screening_questions[this.hrIndex];
       let answer = q.must_have ? mustHaveAnswer(q, text) : screeningAnswer(text.slice(0, 500), q.expected_answer_hint);
       const vague = answer === undefined || (!q.must_have && !/^(yes|no)$/i.test(q.expected_answer_hint.trim())
-        && /^(hello|hi|hey|yes|yeah|no|okay|ok|sure)[.!\s]*$/i.test(text));
+        && (/^(hello|hi|hey|yes|yeah|no|okay|ok|sure)[.!\s]*$/i.test(text)
+          || screeningAnswerNeedsClarification(q.field_key, text)));
       if (vague) {
         if (!this.hrClarified.has(q.field_key)) {
           this.hrClarified.add(q.field_key);
@@ -292,10 +313,7 @@ export class ConversationPipeline {
     }
     if (this.flow.stage === 'OBJECTIONS_QA') {
       if (recruitmentQaCompletion(text) === 'close') {
-        this.advance('CLOSE');
-        this.lastQuestion = 'May the team follow up with you about the next steps?';
-        await this.say(this.lastQuestion);
-        this.armIdle();
+        await this.closeRecruitmentQa('caller_done');
         return true;
       }
       if (/^(?:tell me more|continue|go ahead)[.!\s]*$/i.test(text)) {
@@ -309,8 +327,13 @@ export class ConversationPipeline {
     if (this.flow.stage === 'CLOSE') {
       const consent = verbalConsent(text);
       if (consent === undefined) {
-        await this.say(this.lastQuestion);
-        this.armIdle();
+        if (++this.hrCloseClarifications >= 2) {
+          await this.say('Thank you for your time. Goodbye.');
+          await this.finish('CANDIDATE_COMPLETED', 'follow_up_unconfirmed');
+        } else {
+          await this.say('Please say yes or no: may the team contact you about the next steps?');
+          this.armIdle();
+        }
       } else {
         await this.tool({ name: 'capture_fields', args: { fields: { consent_to_follow_up: consent } } }, text);
         this.advance('WRAP_UP');
@@ -451,6 +474,24 @@ export class ConversationPipeline {
     );
     if (token !== this.generation || this.finishing) return;
     this.tokens += reply.tokens;
+    if (this.campaign.type === 'hr' && this.flow.stage === 'OBJECTIONS_QA') {
+      const status = reply.qa_status ?? (isCandidateQuestion(text) ? 'question' : 'unclear');
+      this.hooks.event('qa_progress', {action: 'classified', status});
+      if (status === 'done') {
+        await this.closeRecruitmentQa('dialogue_done');
+        return;
+      }
+      if (status === 'end_call') {
+        await this.say('Thank you for your time. Goodbye.');
+        await this.finish('CANDIDATE_COMPLETED', 'candidate_requested_end');
+        return;
+      }
+      if (status === 'unclear') {
+        await this.unclearRecruitmentQa();
+        return;
+      }
+      this.hrQaUnclear = 0;
+    }
     const results: unknown[] = [];
     for (const tool of reply.tools) {
       if (this.campaign.type === 'hr' && ['capture_fields', 'advance_stage', 'end_call', 'set_interest_level'].includes(tool.name)) continue;
@@ -464,6 +505,12 @@ export class ConversationPipeline {
         || 'The team will follow up with that information.';
       spoken = safeReply(this.campaign, spoken);
       if (/may (?:the )?team follow up/i.test(spoken)) spoken = 'The team will follow up with that information.';
+      if (this.flow.stage === 'OBJECTIONS_QA' && /the team will follow up/i.test(spoken)) {
+        if (++this.hrQaUnavailable >= 2) {
+          await this.closeRecruitmentQa('unavailable_answer_limit', "I don't have further approved details to add.");
+          return;
+        }
+      }
       if (this.flow.stage === 'DISCOVERY_SCREENING' || this.flow.stage === 'PITCH_ROLE_INTRO') spoken += ` ${this.lastQuestion}`;
       else if (this.flow.stage === 'PERMISSION') spoken += ' Is this a good time for a brief screening?';
       else if (this.flow.stage === 'OBJECTIONS_QA') this.lastQuestion = '';

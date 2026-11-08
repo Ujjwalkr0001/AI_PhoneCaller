@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { defaultCampaign, questionSchema } from '../../packages/shared/src/index.js';
-import { mustHaveAnswer, recruitmentQaCompletion, recruitmentQuestions, requirementRejection, screeningAnswer } from '../../apps/server/src/recruitment.js';
+import { isCandidateQuestion, mustHaveAnswer, recruitmentQaCompletion, recruitmentQuestions, requirementRejection, screeningAnswer } from '../../apps/server/src/recruitment.js';
 
 it('orders role questions, preserves field keys, and omits unrelated personal questions', () => {
   const c = defaultCampaign('hr');
@@ -27,13 +27,20 @@ it('orders role questions, preserves field keys, and omits unrelated personal qu
 
 it('recognizes Q&A completion without confusing actual role questions', () => {
   for (const text of ['No question.', 'No questions.', "I don't have any questions", 'No more questions, thank you.',
-    'No questions from my side.', 'Okay, thank you for asking.', 'Yes, thanks.', 'Got it.'])
+    'No questions from my side.', 'Okay, thank you for asking.', 'Yes, thanks.', 'Got it.',
+    'Okay, yes sir.', 'Thik thik.', 'Shukriya.'])
     expect(recruitmentQaCompletion(text), text).toBe('close');
   for (const text of ['We can cut the call', 'Can we end the call?', 'Please hang up.'])
     expect(recruitmentQaCompletion(text), text).toBe('finish');
   for (const text of ['How many hours do we have to work?', 'No, what is the work location?',
     'Okay, but what is the salary?', 'Can we cut deployment time?', 'Yes'])
     expect(recruitmentQaCompletion(text), text).toBeUndefined();
+});
+
+it('does not turn a continued experience answer into a role question', () => {
+  expect(isCandidateQuestion('Where I developed the complete architecture and a local Docker environment.')).toBe(false);
+  expect(isCandidateQuestion('What are the working hours?')).toBe(true);
+  expect(isCandidateQuestion('How many hours do we have to work')).toBe(true);
 });
 
 it('understands the actual saved experience requirement and declines only definite mismatches', () => {

@@ -3,6 +3,7 @@ import { FrameBuffer, sse } from '../audio.js';
 import type { SttClient, SttEvent, TtsClient } from '../contracts.js';
 import { gnaniSttKey, gnaniTtsKey } from '../provider-config.js';
 import { acquireSpeechRequest, retryDelay } from './request-queue.js';
+import { TranscriptTurnBuffer } from './transcript-turn-buffer.js';
 
 export class GnaniSttClient implements SttClient {
   onTurn = (_e: SttEvent) => {};
@@ -15,6 +16,7 @@ export class GnaniSttClient implements SttClient {
   private queue: Buffer[] = [];
   private nextFrameAt = 0;
   private endAt?: number;
+  private turns = new TranscriptTurnBuffer((event) => this.onTurn(event));
   constructor(
     private languageCodes: string[],
     private callId: string,
@@ -47,6 +49,7 @@ export class GnaniSttClient implements SttClient {
         reject(new Error('Gnani STT readiness timeout'));
       }, 12000);
       ws.on('message', (raw) => {
+        if (this.closed) return;
         try {
           const msg = JSON.parse(raw.toString()) as {
             type: string;
@@ -59,14 +62,16 @@ export class GnaniSttClient implements SttClient {
           }
           if (msg.type === 'speech_start') {
             this.endAt = undefined;
+            this.turns.activity();
             this.onActivity();
           }
           if (msg.type === 'processing') {
             this.endAt = Date.now();
+            this.turns.activity();
             this.onActivity();
           }
           if (msg.type === 'transcript' && msg.text?.trim()) {
-            this.onTurn({
+            this.turns.push({
               text: msg.text,
               language: msg.detected_language_code,
               endOfSpeechAt: this.endAt,
@@ -119,6 +124,7 @@ export class GnaniSttClient implements SttClient {
   close() {
     this.closed = true;
     clearInterval(this.timer);
+    this.turns.close();
     this.ws?.close();
     this.queue = [];
   }

@@ -83,7 +83,7 @@ export function requirementRejection(question: Question) {
 
 export function verbalConsent(text: string): boolean | undefined {
   if (/\b(no|not now|don.t|do not|never)\b|नहीं/i.test(text)) return false;
-  if (/\b(yes|yeah|yep|sure|okay|ok|agree|please|go ahead)\b|हाँ|हां/i.test(text)) return true;
+  if (/\b(yes|yeah|yep|sure|okay|ok|agree|please|go ahead|haan|han|bilkul)\b|हाँ|हां/i.test(text)) return true;
   return undefined;
 }
 
@@ -95,18 +95,34 @@ export function screeningAnswer(text: string, expected: string) {
     : text;
 }
 
+export function screeningAnswerNeedsClarification(field: string, text: string) {
+  if (screeningAnswer(text, '') === 'unknown') return false;
+  if (/\b(?:and|or|but|from|at|with|for|to|of|a|an|the)[.!?\s]*$/i.test(text)) return true;
+  // These lightweight checks describe English answers; preserve other scripts.
+  if (/[^\p{Script=Latin}\p{Script=Common}]/u.test(text)) return false;
+  if (/salary|compensation/i.test(field))
+    return !/\d|salary|pay|rupee|dollar|lakh|lac\b|crore|thousand|hundred|negotiable|flexible|market|as per|discuss|prefer not|unknown|\b(?:ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b/i.test(text);
+  if (/notice|joining/i.test(field))
+    return !/\d|days?|weeks?|months?|years?|immediate|right away|any ?time|available|unemployed|no notice|not applicable|unknown|tomorrow|today/i.test(text);
+  return false;
+}
+
 export function isCandidateQuestion(text: string) {
-  return /\?$/.test(text) || /^(what|why|how|where|who|which|can you|could you|tell me|explain)\b/i.test(text);
+  return /\?$/.test(text)
+    || /^(?:what|why|how|where|when|who|which)\s+(?:is|are|was|were|do|does|did|can|could|will|would|should|has|have|much|many|long|often)\b/i.test(text)
+    || /^(?:what|which)\s+(?:salary|role|hours|benefits|location|skills|experience)\b/i.test(text)
+    || /^(?:can|could|would) you\b|^(?:tell me|explain)\b/i.test(text);
 }
 
 /** Recognize conversational ways of finishing Q&A without swallowing a real question. */
 export function recruitmentQaCompletion(text: string): 'close' | 'finish' | undefined {
   const normalized = text.toLowerCase().replace(/[’]/g, "'")
-    .replace(/[,.!?;:]/g, ' ').replace(/\s+/g, ' ').trim();
+    .replace(/[,.!?;:]/g, ' ').replace(/\b(?:sir|madam|ma'am)\b/g, ' ')
+    .replace(/\s+/g, ' ').trim();
   if (/\b(?:(?:we|you) can|let's|please|can (?:we|you)|i (?:want|need|would like) to)\s+(?:end|cut|disconnect|stop)(?:\s+(?:the|this))?\s+call\b/.test(normalized)
     || /^(?:please )?(?:end|cut|disconnect|stop) (?:the |this )?call(?: now)?$|^(?:please )?hang up(?: now)?$/.test(normalized)) return 'finish';
   const completion = /^(?:no(?: more| other| further)?(?: questions?| doubts?)?|none|nothing(?: else)?|that's all|that is all|that's it|that answers my question|all clear|i (?:have no|don't have(?: any)?|do not have(?: any)?) (?:more |other |further )?(?:questions?|doubts?))(?: for now| at the moment| from my side)?(?: thanks| thank you)?$/;
-  const acknowledgement = /^(?:(?:okay|ok|alright|understood|got it|sounds good)(?: )?)*(?:thank you(?: for (?:asking|explaining|the information|your time))?|thanks)?$|^yes (?:thanks|thank you)$/;
+  const acknowledgement = /^(?:(?:okay|ok|alright|understood|got it|sounds good|thik|theek|ठीक|है)(?: )?)+(?:yes|thank you(?: for (?:asking|explaining|the information|your time))?|thanks)?$|^(?:thank you(?: for (?:asking|explaining|the information|your time))?|thanks|shukriya|शुक्रिया|धन्यवाद)$|^yes (?:thanks|thank you)$/;
   if (completion.test(normalized.replace(/^no (?=no\b|i\b)/, '')) || (normalized && acknowledgement.test(normalized))) return 'close';
   return undefined;
 }

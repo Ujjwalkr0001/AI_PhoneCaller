@@ -159,3 +159,14 @@ it('does not silently fall back to Groq when the OpenAI key is missing', () => {
   vi.stubEnv('DIALOGUE_PROVIDER', 'groq');
   expect(dialogueConfig()).toMatchObject({ provider: 'groq', key: 'groq-synthetic' });
 });
+
+it('retains the model Q&A intent independently of spoken text and follow-up consent', async () => {
+  vi.stubEnv('OPENAI_API_KEY', 'synthetic-key');
+  vi.stubEnv('DIALOGUE_API_KEY', '');
+  const content = JSON.stringify({text:'',tools:[],qa_status:'done'});
+  vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(
+    `data: ${JSON.stringify({choices:[{delta:{content}}]})}\n\n`,
+  ));
+  const reply=await new CompatibleDialogue().reply(defaultCampaign('hr'),[], 'OBJECTIONS_QA',{},new AbortController().signal,()=>{});
+  expect(reply).toMatchObject({qa_status:'done',text:'',tools:[]});
+});

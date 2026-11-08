@@ -228,14 +228,12 @@ describe('full mock pipeline', () => {
     expect(p.transcript.at(-1)?.text).toBe('The team will follow up with that information.');
     await utter(p, 'Please repeat that.');
     expect(p.transcript.at(-1)?.text).toBe('The team will follow up with that information.');
-    await utter(p, 'What is the location?');
-    expect(p.flow.stage).toBe('OBJECTIONS_QA');
     await utter(p, completion);
     expect(p.flow.stage).toBe('CLOSE');
     expect(p.transcript.at(-1)?.text).toBe('May the team follow up with you about the next steps?');
     await utter(p, 'No, thank you.');
     expect(results[0]).toMatchObject({outcome: 'CANDIDATE_COMPLETED', follow_up_eligible: false});
-    expect(dialogue).toHaveBeenCalledTimes(2);
+    expect(dialogue).toHaveBeenCalledTimes(1);
     expect(p.transcript.filter(t=>t.role==='agent' && /questions.*about the role/i.test(t.text))).toHaveLength(1);
   });
   it.each(['OBJECTIONS_QA', 'CLOSE'])('honors a request to end the call at %s', async (stage) => {
@@ -247,6 +245,54 @@ describe('full mock pipeline', () => {
     expect(results[0]).toMatchObject({outcome: 'CANDIDATE_COMPLETED', end_reason: 'candidate_requested_end', follow_up_eligible: false});
     expect(p.transcript.at(-1)?.text).toBe('Thank you for your time. Goodbye.');
     expect(dialogue).not.toHaveBeenCalled();
+  });
+  it('uses contextual Q&A completion from the dialogue model without treating it as follow-up consent', async () => {
+    const {p} = fixture('hr');
+    vi.spyOn(p.dialogue, 'reply').mockResolvedValue({text: '', tools: [], tokens: 1, qa_status: 'done'});
+    await p.start(); await utter(p, 'Yes'); await utter(p, 'Yes');
+    await utter(p, 'That clears it up for me.');
+    expect(p.flow.stage).toBe('CLOSE');
+    expect(p.fields.consent_to_follow_up).toBeUndefined();
+    expect(p.transcript.at(-1)?.text).toContain('May the team follow up');
+  });
+  it('bounds unclear Q&A and closing attempts instead of repeating fallback replies forever', async () => {
+    const {p, results, events} = fixture('hr');
+    vi.spyOn(p.dialogue, 'reply').mockResolvedValue({text: '', tools: [], tokens: 1, qa_status: 'unclear'});
+    await p.start(); await utter(p, 'Yes'); await utter(p, 'Yes');
+    await utter(p, 'Hello.');
+    expect(p.transcript.at(-1)?.text).toContain("couldn't make out a question");
+    await utter(p, 'Hello, hello.');
+    expect(p.flow.stage).toBe('CLOSE');
+    await utter(p, 'And.'); await utter(p, 'Hello.');
+    expect(results[0]).toMatchObject({outcome: 'CANDIDATE_COMPLETED', end_reason: 'follow_up_unconfirmed', follow_up_eligible: false});
+    expect(events.filter(e=>e.type==='qa_progress').map(e=>e.data)).toContainEqual({action:'closing',reason:'unclear_limit'});
+    expect(p.transcript.filter(t=>t.role==='agent' && t.text==='The team will follow up with that information.')).toHaveLength(0);
+  });
+  it('does not answer the same unavailable role question indefinitely', async () => {
+    const {p, events} = fixture('hr');
+    vi.spyOn(p.dialogue, 'reply').mockResolvedValue({text: 'The team will follow up with that information.', tools: [], tokens: 1, qa_status: 'question'});
+    await p.start(); await utter(p, 'Yes'); await utter(p, 'Yes');
+    await utter(p, 'What are the working hours?');
+    await utter(p, 'What are the working hours?');
+    expect(p.flow.stage).toBe('CLOSE');
+    expect(events.filter(e=>e.type==='qa_progress').map(e=>e.data)).toContainEqual({action:'closing',reason:'unavailable_answer_limit'});
+    expect(p.transcript.filter(t=>t.role==='agent' && t.text==='The team will follow up with that information.')).toHaveLength(1);
+  });
+  it('does not save continued experience as salary or an unfinished city as the next field', async () => {
+    const {p} = fixture('hr', c=>{c.screening_questions = [
+      {question:'What are your salary expectations?',field_key:'expected_salary',required:false,must_have:false,expected_answer_hint:''},
+      {question:'Which city would you work from?',field_key:'current_location',required:false,must_have:false,expected_answer_hint:''},
+      {question:'What is your notice period?',field_key:'notice_period',required:false,must_have:false,expected_answer_hint:''},
+    ];});
+    await p.start();await utter(p,'Yes');
+    await utter(p,'Where I developed the architecture and Docker environment.');
+    expect(p.fields.expected_salary).toBeUndefined();
+    await utter(p,'At least 10,000 per month.');
+    await utter(p,'I want to work from.');
+    expect(p.fields.current_location).toBeUndefined();
+    await utter(p,'New York USA.');
+    expect(p.fields).toMatchObject({expected_salary:'At least 10,000 per month.',current_location:'New York USA.'});
+    expect(p.fields.notice_period).toBeUndefined();
   });
   it('captures technical experience without mistaking domain words for handoff or callback requests', async () => {
     const { p } = fixture('hr');
