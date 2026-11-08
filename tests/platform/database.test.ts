@@ -176,6 +176,36 @@ describe('Postgres + authenticated API', () => {
     ).toBe(true);
     await second.pool.end();
   });
+  it('does not queue another call after the configured attempt limit', async () => {
+    const campaignData = defaultCampaign('hr');
+    campaignData.schedule.max_attempts = 1;
+    const campaign = await store.put('campaigns', org, { ...campaignData, status: 'running' });
+    const contact = await store.put('contacts', org, {
+      phone: '+12025550177',
+      campaign_id: campaign.id,
+      status: 'dialing',
+      attempts: 1,
+    });
+    const call = await store.put<CallData>('calls', org, {
+      campaign_id: campaign.id,
+      contact_id: contact.id,
+      status: 'ringing',
+      agent_version: 'test',
+      simulation: true,
+      sample: true,
+      last_status: new Date().toISOString(),
+    });
+    await platform.failCall(org, call, 'NO_ANSWER');
+    expect((await store.get('contacts', org, contact.id))?.data).toMatchObject({
+      status: 'blocked',
+      blocked_reason: 'Maximum attempts reached',
+    });
+    const pending = await store.pool.query(
+      "select id from pgboss.job where name='dial' and data->>'contactId'=$1 and state in ('created','active','retry')",
+      [contact.id],
+    );
+    expect(pending.rowCount).toBe(0);
+  });
   it('launch idempotency retains one campaign transition', async () => {
     const c = defaultCampaign();
     c.compliance.attested = true;

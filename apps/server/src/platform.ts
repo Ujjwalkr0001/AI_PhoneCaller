@@ -587,7 +587,26 @@ export class Platform {
           call.id,
         ],
       );
-      if (call.data.contact_id)
+      if (call.data.contact_id) {
+        const retryable = result.outcome === 'FAILED' || result.outcome === 'NO_ANSWER';
+        let exhausted = false;
+        if (retryable) {
+          const contactRow = (
+            await client.query('select data from contacts where id=$1 and org_id=$2', [
+              call.data.contact_id,
+              org,
+            ])
+          ).rows[0];
+          const campaignRow = (
+            await client.query('select data from campaigns where id=$1 and org_id=$2', [
+              call.data.campaign_id,
+              org,
+            ])
+          ).rows[0];
+          exhausted =
+            Number(contactRow?.data.attempts ?? 0) >=
+            Number(campaignRow?.data.schedule.max_attempts ?? 1);
+        }
         await client.query(
           "update contacts set data=data || $1::jsonb,updated_at=now() where org_id=$2 and id=$3 and data->>'status'<>'suppressed'",
           [
@@ -597,14 +616,16 @@ export class Platform {
                   ? 'callback'
                   : result.outcome === 'WRONG_NUMBER'
                     ? 'wrong_number'
-                    : result.outcome === 'FAILED' || result.outcome === 'NO_ANSWER'
-                      ? 'retry'
+                     : retryable
+                       ? exhausted ? 'blocked' : 'retry'
                       : 'completed',
+              ...(exhausted ? { blocked_reason: 'Maximum attempts reached' } : {}),
             },
             org,
             call.data.contact_id,
           ],
         );
+      }
       await client.query('insert into audit_log(org_id,data) values($1,$2)', [
         org,
         { action: 'result.saved', entity_id: call.id, outcome: result.outcome },
@@ -660,7 +681,8 @@ export class Platform {
     );
     if (call.data.contact_id && outcome !== 'VOICEMAIL') {
       const c = await this.store.get<CampaignData>('campaigns', org, call.data.campaign_id);
-      if (c)
+      const contact = await this.store.get<ContactData>('contacts', org, call.data.contact_id);
+      if (c && contact?.data.status === 'retry')
         await this.queueContact(
           org,
           call.data.contact_id,
