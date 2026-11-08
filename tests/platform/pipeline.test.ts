@@ -117,6 +117,20 @@ describe('full mock pipeline', () => {
     expect(results[0].outcome).toBe('VOICEMAIL');
     expect(results[0].transcript).toEqual([]);
   });
+  it('records an unanswered introduction as incomplete with its end source', async () => {
+    const { p, results, events } = fixture('hr');
+    await p.start();
+    await p.finish(undefined, 'twilio_media_stop');
+    await p.finish();
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      outcome: 'INCOMPLETE',
+      end_reason: 'twilio_media_stop',
+      follow_up_eligible: false,
+      summary: expect.stringContaining('answers are unknown'),
+    });
+    expect(events.filter((event) => event.type === 'call_end')).toHaveLength(1);
+  });
   it('substantial Hindi utterance changes the recorded language', async () => {
     const { p, results } = fixture();
     await p.start();

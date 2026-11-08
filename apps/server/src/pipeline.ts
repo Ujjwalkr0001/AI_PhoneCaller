@@ -102,7 +102,7 @@ export class ConversationPipeline {
     this.provider(this.dialogue.name, 'selected');
     this.duration = setTimeout(() => {
       this.hooks.event('exit', 'TIMEOUT');
-      void this.finish(this.outcome ?? 'NOT_INTERESTED');
+      void this.finish(this.outcome ?? 'INCOMPLETE', 'duration_limit');
     }, this.campaign.max_call_duration_s * 1000);
     await this.say(opening(this.campaign, this.firstName));
     this.flow.advance('PERMISSION');
@@ -132,7 +132,7 @@ export class ConversationPipeline {
     clearTimeout(this.idle);
     this.idle = setTimeout(
       () => {
-        if (++this.idleCount > 1) void this.finish(this.outcome ?? 'NOT_INTERESTED');
+        if (++this.idleCount > 1) void this.finish(this.outcome ?? 'INCOMPLETE', 'idle_timeout');
         else
           void this.say('Are you still there?')
             .then(() => this.armIdle())
@@ -409,12 +409,18 @@ export class ConversationPipeline {
     await this.transport.mark(`turn-${this.generation}`);
     this.busy = false;
   }
-  finish(outcome?: Outcome): Promise<void> {
+  finish(outcome?: Outcome, source = 'pipeline'): Promise<void> {
     if (this.finishing) return this.finishing;
-    this.finishing = this.finalize(outcome);
+    this.hooks.event('call_end', {
+      source,
+      requested_outcome: outcome,
+      stage: this.flow.stage,
+      caller_turns: this.transcript.filter((turn) => turn.role === 'caller').length,
+    });
+    this.finishing = this.finalize(outcome, source);
     return this.finishing;
   }
-  private async finalize(outcome?: Outcome) {
+  private async finalize(outcome: Outcome | undefined, source: string) {
     clearTimeout(this.duration);
     clearTimeout(this.idle);
     this.resolveIntro();
@@ -430,7 +436,7 @@ export class ConversationPipeline {
           ? 'INTERESTED_HOT'
           : this.interest === 'warm'
             ? 'INTERESTED_WARM'
-            : 'NOT_INTERESTED');
+            : 'INCOMPLETE');
     let postCall: Awaited<ReturnType<typeof analyzeCall>> | undefined;
     if (!this.simulation && this.transcript.some((turn) => turn.role === 'caller')) {
       try {
@@ -445,11 +451,14 @@ export class ConversationPipeline {
       campaign_id: this.campaignId,
       contact_id: this.contactId,
       outcome: finalOutcome,
-      summary: postCall?.summary ?? `${this.simulation ? '[SIMULATION] ' : ''}${this.campaign.type === 'hr' ? 'Advisory screening' : 'Campaign call'} ended at ${this.flow.stage}.\n${
+      end_reason: source,
+      summary: postCall?.summary ?? (!this.transcript.some((turn) => turn.role === 'caller')
+        ? 'The call ended before any caller response was captured. Interest and qualification answers are unknown.'
+        : `${this.simulation ? '[SIMULATION] ' : ''}${this.campaign.type === 'hr' ? 'Advisory screening' : 'Campaign call'} ended at ${this.flow.stage}.\n${
         Object.entries(this.fields)
           .map(([k, v]) => `${k}: ${v}`)
           .join('\n') || 'No qualification fields captured.'
-      }\nHuman review required.`,
+      }\nHuman review required.`),
       extracted_fields: this.fields,
       sentiment: 'unknown',
       languages: [...this.spokenLanguages],

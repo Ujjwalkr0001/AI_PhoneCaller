@@ -34,6 +34,7 @@ export const outcomeNames: Record<string, string> = {
   WRONG_NUMBER: 'Wrong number',
   VOICEMAIL: 'Voicemail',
   NO_ANSWER: 'No answer',
+  INCOMPLETE: 'Incomplete',
   FAILED: 'Failed',
   CANDIDATE_COMPLETED: 'Screened',
   CANDIDATE_DECLINED: 'Declined',

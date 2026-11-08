@@ -202,6 +202,7 @@ export const outcomes = [
   'WRONG_NUMBER',
   'VOICEMAIL',
   'NO_ANSWER',
+  'INCOMPLETE',
   'FAILED',
   'CANDIDATE_COMPLETED',
   'CANDIDATE_DECLINED',
@@ -240,6 +241,7 @@ export interface CallResult {
   campaign_id: string;
   contact_id?: string;
   outcome: Outcome;
+  end_reason?: string;
   summary: string;
   extracted_fields: Record<string, string | boolean | number>;
   sentiment: 'unknown';

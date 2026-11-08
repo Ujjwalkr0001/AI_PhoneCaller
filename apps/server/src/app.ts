@@ -30,7 +30,7 @@ import {
   type DeliveryData,
 } from './platform.js';
 import { normalizePhone, percentile } from './domain.js';
-import { mulawToPcm16le } from './audio.js';
+import { MediaDiagnostics, mulawToPcm16le } from './audio.js';
 import type { Transport } from './contracts.js';
 import type { ConversationPipeline } from './pipeline.js';
 import { GnaniTtsClient } from './providers/gnani.js';
@@ -741,7 +741,8 @@ export async function buildApp(store: Store, platform: Platform) {
             body.CallStatus === 'failed' ? 'FAILED' : 'NO_ANSWER',
           );
         else if (body.CallStatus === 'completed') {
-          if (platform.active.has(call.id)) await platform.active.get(call.id)!.finish();
+          if (platform.active.has(call.id))
+            await platform.active.get(call.id)!.finish(undefined, 'twilio_status_completed');
           else await platform.failCall(call.org_id, call, 'FAILED');
         } else {
           call.data.status = body.CallStatus === 'answered' ? 'in-progress' : body.CallStatus;
@@ -776,13 +777,24 @@ export async function buildApp(store: Store, platform: Platform) {
         sid: string | undefined,
         callId: string | undefined,
         starting = false;
-      const transport = socketTransport(
+      const diagnostics = new MediaDiagnostics();
+      const socket = socketTransport(
         ws,
         () => streamSid,
         async () => {
-          if (sid) await platform.telephony.hangup(sid);
+          if (sid) {
+            app.log.info({ call_id: callId }, 'Application requested Twilio hangup');
+            await platform.telephony.hangup(sid);
+          }
         },
       );
+      const transport = {
+        ...socket,
+        audio(frame: Buffer) {
+          diagnostics.outbound(frame);
+          socket.audio(frame);
+        },
+      };
       ws.on('message', (raw) => {
         void (async () => {
           const e = JSON.parse(raw.toString()) as {
@@ -791,10 +803,11 @@ export async function buildApp(store: Store, platform: Platform) {
             start?: {
               streamSid: string;
               callSid: string;
+              tracks?: string[];
               customParameters: { call_id: string };
               mediaFormat: { encoding: string; sampleRate: number; channels: number };
             };
-            media?: { payload: string };
+            media?: { payload: string; track?: string };
             mark?: { name: string };
           };
           if (e.event === 'start' && e.start && !starting) {
@@ -815,7 +828,7 @@ export async function buildApp(store: Store, platform: Platform) {
             streamSid = e.start.streamSid;
             sid = e.start.callSid;
             callId = call.id;
-            app.log.info({ call_id: call.id }, 'Signed Twilio media stream started');
+            app.log.info({ call_id: call.id, tracks: e.start.tracks }, 'Signed Twilio media stream started');
             const campaign = await store.get<CampaignData>(
               'campaigns',
               call.org_id,
@@ -824,21 +837,24 @@ export async function buildApp(store: Store, platform: Platform) {
             if (!campaign) throw new Error('Campaign missing');
             pipeline = await platform.createPipeline(call.org_id, campaign, call, transport);
             await pipeline.start();
-          } else if (e.event === 'media' && e.media && e.streamSid === streamSid)
-            pipeline?.input(mulawToPcm16le(Buffer.from(e.media.payload, 'base64')));
+          } else if (e.event === 'media' && e.media && e.streamSid === streamSid) {
+            const frame = Buffer.from(e.media.payload, 'base64');
+            if (diagnostics.inbound(frame, e.media.track)) pipeline?.input(mulawToPcm16le(frame));
+          }
           else if (e.event === 'mark' && e.mark && e.streamSid === streamSid)
             transport.ack(e.mark.name);
-          else if (e.event === 'stop') await pipeline?.finish();
+          else if (e.event === 'stop') await pipeline?.finish(undefined, 'twilio_media_stop');
         })().catch(async (error) => {
           app.log.error({ err: error }, 'Media stream failed');
-          await pipeline?.finish('FAILED');
+          await pipeline?.finish('FAILED', 'twilio_media_error');
           ws.close(1011, 'Media error');
         });
       });
-      ws.on('close', () => {
-        if (callId) app.log.info({ call_id: callId }, 'Twilio media stream closed');
+      ws.on('close', (code) => {
+        if (callId)
+          app.log.info({ call_id: callId, code, ...diagnostics.summary() }, 'Twilio media stream closed');
         void pipeline
-          ?.finish()
+          ?.finish(undefined, 'twilio_media_close')
           .catch((error) => app.log.error({ err: error }, 'Failed to persist phone result'));
       });
     },

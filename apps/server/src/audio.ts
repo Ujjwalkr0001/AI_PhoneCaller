@@ -68,6 +68,44 @@ export class FrameBuffer {
     return [frame];
   }
 }
+/** Count audio flow and exact digital reflections without logging voice payloads. */
+export class MediaDiagnostics {
+  private inboundFrames = 0;
+  private outboundFrames = 0;
+  private ignoredTracks = 0;
+  private loopbackMatches = 0;
+  private recent: string[] = [];
+  private isVoice(frame: Buffer) {
+    let energy = 0;
+    for (const byte of frame) energy += Math.abs(mulawToLinearSample(byte));
+    return frame.length > 0 && energy / frame.length > 250;
+  }
+  inbound(frame: Buffer, track: string | undefined) {
+    if (track !== 'inbound') {
+      this.ignoredTracks++;
+      return false;
+    }
+    this.inboundFrames++;
+    if (this.isVoice(frame)) {
+      this.recent.push(frame.toString('base64'));
+      if (this.recent.length > 250) this.recent.shift();
+    }
+    return true;
+  }
+  outbound(frame: Buffer) {
+    this.outboundFrames++;
+    if (this.isVoice(frame) && this.recent.includes(frame.toString('base64')))
+      this.loopbackMatches++;
+  }
+  summary() {
+    return {
+      inbound_frames: this.inboundFrames,
+      outbound_frames: this.outboundFrames,
+      ignored_track_frames: this.ignoredTracks,
+      exact_voice_loopback_frames: this.loopbackMatches,
+    };
+  }
+}
 export async function* sse(
   response: Response,
 ): AsyncGenerator<{ event: string; data: Record<string, unknown> }> {

@@ -45,7 +45,7 @@ export function outcomeValues(rows: ResultRow[]) {
     {
       label: 'Other outcomes',
       count: rows.filter((r) =>
-        ['NO_ANSWER', 'VOICEMAIL', 'WRONG_NUMBER', 'FAILED'].includes(r.data.outcome),
+        ['NO_ANSWER', 'INCOMPLETE', 'VOICEMAIL', 'WRONG_NUMBER', 'FAILED'].includes(r.data.outcome),
       ).length,
       tone: 'muted',
     },

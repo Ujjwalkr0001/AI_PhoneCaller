@@ -73,7 +73,7 @@ export function StatusBadge({ status }: { status: string }) {
     status,
   )
     ? 'positive'
-    : /CALLBACK|pending|ringing|scheduled/.test(status)
+    : /CALLBACK|INCOMPLETE|pending|ringing|scheduled/.test(status)
       ? 'amber'
       : /FAILED|failed|dead_letter/.test(status)
         ? 'negative'
