@@ -31,6 +31,7 @@ export interface ContactData extends Contact {
   attempts: number;
   last_attempt?: string;
   blocked_reason?: string;
+  next_attempt_at?: string;
 }
 export interface CallData {
   campaign_id: string;
@@ -135,16 +136,25 @@ export class Platform {
     await this.boss.schedule('maintenance', '* * * * *');
   }
   async queueContact(org: string, contactId: string, when?: Date) {
-    await this.boss.send(
+    const jobId = await this.boss.send(
       'dial',
       { org, contactId },
       {
-        singletonKey: contactId,
+        // A deferred job must not collide with the currently active job in pg-boss's
+        // 30-second singleton slot. The due instant also deduplicates repeated schedules.
+        singletonKey: when ? `${contactId}:${when.toISOString()}` : contactId,
         singletonSeconds: 30,
         startAfter: when ?? new Date(),
         retryLimit: 0,
       },
     );
+    logger[jobId ? 'info' : 'warn'](jobId ? 'Dial job queued' : 'Dial job deduplicated', {
+      org_id: org,
+      contact_id: contactId,
+      next_attempt_at: when?.toISOString(),
+      job_id: jobId,
+    });
+    return jobId;
   }
   async launch(org: string, id: string, key: string) {
     if (!this.simulation) requireLiveCalling();
@@ -296,23 +306,30 @@ export class Platform {
       )
         reasons.push('Insufficient remaining daily minutes for a full call');
       if (reasons.length) {
-        contact.data.status = suppressed ? 'suppressed' : 'blocked';
+        const deferrable = reasons.every((r) => /window|cap|budget|minutes/i.test(r));
+        const next = deferrable
+          ? nextCallingWindow(
+              campaign.data,
+              new Date(),
+              reasons.some((r) => /cap|budget|minutes/i.test(r)),
+            )
+          : undefined;
+        contact.data.status = suppressed ? 'suppressed' : next ? 'scheduled' : 'blocked';
         contact.data.blocked_reason = reasons.join('; ');
+        contact.data.next_attempt_at = next?.toISOString();
         await client.query(
           'update contacts set data=$1,updated_at=now() where id=$2 and org_id=$3',
           [contact.data, contactId, org],
         );
         await client.query('commit');
-        if (reasons.every((r) => /window|cap|budget|minutes/i.test(r)))
-          await this.queueContact(
-            org,
-            contactId,
-            nextCallingWindow(
-              campaign.data,
-              new Date(),
-              reasons.some((r) => /cap|budget|minutes/i.test(r)),
-            ),
-          );
+        logger[next ? 'info' : 'warn'](next ? 'Dial deferred by calling gate' : 'Dial blocked by calling gate', {
+          org_id: org,
+          campaign_id: campaign.id,
+          contact_id: contactId,
+          reasons,
+          next_attempt_at: next?.toISOString(),
+        });
+        if (next) await this.queueContact(org, contactId, next);
         return;
       }
       if (
@@ -358,6 +375,8 @@ export class Platform {
       contact.data.attempts++;
       contact.data.last_attempt = new Date().toISOString();
       contact.data.status = 'dialing';
+      delete contact.data.blocked_reason;
+      delete contact.data.next_attempt_at;
       await client.query('update contacts set data=$1,updated_at=now() where id=$2 and org_id=$3', [
         contact.data,
         contactId,
@@ -371,8 +390,21 @@ export class Platform {
       client.release();
     }
     if (!call || !contact || !campaign) return;
+    logger.info('Dial attempt started', {
+      org_id: org,
+      campaign_id: campaign.id,
+      contact_id: contactId,
+      call_id: call.id,
+      simulation: this.simulation,
+    });
     try {
       call.data.sid = await this.telephony.dial(contact.data.phone, call.id);
+      logger.info('Dial accepted by telephony provider', {
+        org_id: org,
+        call_id: call.id,
+        provider: this.simulation ? 'simulation' : 'twilio',
+        sid_suffix: call.data.sid.slice(-6),
+      });
       call.data.status = 'ringing';
       await this.store.put('calls', org, call.data, call.id);
       await this.store.audit(org, 'call.dial', call.id, { simulation: this.simulation });
@@ -383,6 +415,12 @@ export class Platform {
         typeof rawCode === 'number' && rawCode >= 10000 && rawCode <= 99999
           ? ` (Twilio code ${rawCode})`
           : '';
+      logger.error('Dial attempt failed', {
+        org_id: org,
+        call_id: call.id,
+        provider: this.simulation ? 'simulation' : 'twilio',
+        provider_code: code.trim() || undefined,
+      });
       await this.failCall(
         org,
         call,
@@ -710,6 +748,29 @@ export class Platform {
           if (contact?.data.status === 'callback')
             await this.queueContact(org, contact.id, new Date(call.data.callback_at));
         }
+      }
+      // The due time is durable in the contact. Recover a missing pg-boss job
+      // after a crash without scheduling duplicate phone attempts.
+      for (const contact of await this.store.list<ContactData>('contacts', org)) {
+        if (contact.data.status !== 'scheduled' || !contact.data.next_attempt_at) continue;
+        const campaign = await this.store.get<CampaignData>(
+          'campaigns',
+          org,
+          contact.data.campaign_id,
+        );
+        if (campaign?.data.status !== 'running') continue;
+        const pending = await this.store.pool.query(
+          "select 1 from pgboss.job where name='dial' and data->>'contactId'=$1 and state in ('created','active','retry') limit 1",
+          [contact.id],
+        );
+        if (pending.rowCount) continue;
+        logger.warn('Recovering missing scheduled dial job', {
+          org_id: org,
+          campaign_id: campaign.id,
+          contact_id: contact.id,
+          next_attempt_at: contact.data.next_attempt_at,
+        });
+        await this.queueContact(org, contact.id, new Date(contact.data.next_attempt_at));
       }
       for (const d of await this.store.list<DeliveryData>('deliveries', org))
         if (

@@ -402,6 +402,19 @@ function PeopleTable({
                         <details>
                           <summary className="helper">Why?</summary>
                           <p className="helper">{contact.data.blocked_reason}</p>
+                          {contact.data.next_attempt_at && (
+                            <p className="helper">
+                              Next attempt:{' '}
+                              {new Date(contact.data.next_attempt_at).toLocaleString('en-IN', {
+                                timeZone: 'Asia/Kolkata',
+                                day: 'numeric',
+                                month: 'short',
+                                hour: 'numeric',
+                                minute: '2-digit',
+                              })}{' '}
+                              IST
+                            </p>
+                          )}
                         </details>
                       )}
                     </td>

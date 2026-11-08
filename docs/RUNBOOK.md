@@ -16,7 +16,11 @@ Set or rotate fallback keys on the server, verify the providers' own language/vo
 
 ## Twilio outage or signature failure
 
-Pause dialing, check account status/trial verified numbers/geographic permissions, `PUBLIC_BASE_URL`, exact query string, number configuration and Twilio debugger. Use [Twilio security documentation](https://www.twilio.com/docs/usage/security); never turn off signature validation. Status events are idempotently handled after terminal results. The sweeper reconciles stale calls. Do not indiscriminately retry failed commercial calls.
+Pause dialing, check account status/trial verified numbers/geographic permissions, `TWILIO_WEBHOOK_BASE_URL` (or deployed `PUBLIC_BASE_URL`), exact query string, number configuration and Twilio debugger. Use [Twilio security documentation](https://www.twilio.com/docs/usage/security); never turn off signature validation. Status events are idempotently handled after terminal results. The sweeper reconciles stale calls. Do not indiscriminately retry failed commercial calls.
+
+If a contact shows **Scheduled**, inspect its next attempt time in the campaign view. Calls outside the chosen IST window keep zero attempts and are scheduled for the next allowed window. The dial queue uses a distinct singleton key for that deferred job; maintenance recovers it if a crash leaves the contact scheduled without a pending job. Do not submit another campaign to the same number just to make the call immediate.
+
+For local demos using a Cloudflare Quick Tunnel, check the public `/healthz` endpoint before the calling window. Quick Tunnel URLs can expire; replace `TWILIO_WEBHOOK_BASE_URL` and restart the server if that happens. Use a stable public HTTPS endpoint for unattended calls.
 
 ## Destination outage
 
@@ -46,7 +50,7 @@ Default retention: results/transcripts, calls and delivery records 30 days. A mi
 
 ## Observability
 
-Pino writes JSON request failures with redacted metadata; monitor/result events carry call IDs, flow, provider trace, tools and measured latency. `/metrics` requires an authenticated session (set a monitor cookie securely or scrape through a trusted authenticated proxy). It exposes active calls, queue-error count and drain state. `/readyz` is public for uptime checks and verifies DB availability plus drain state. Never publish metrics session cookies.
+Pino writes JSON call scheduling, calling-gate decisions, dial attempts, telephony acceptance/failure, signed Twilio callbacks and media-stream lifecycle with IDs and safe status codes. It omits phone numbers and credentials. Set `LOG_LEVEL=info` to see the full lifecycle. In the current local setup, stdout goes to ignored `output/live/server.out.log` and stderr to `output/live/server.err.log`. Monitor/result events carry call IDs, flow, provider trace, tools and measured latency. `/metrics` requires an authenticated session (set a monitor cookie securely or scrape through a trusted authenticated proxy). It exposes active calls, queue-error count and drain state. `/readyz` is public for uptime checks and verifies DB availability plus drain state. Never publish metrics session cookies.
 
 Suggested operational alerts, to be wired into your monitoring account: readiness failures for 2 minutes; increasing queue errors; active calls stuck after duration; repeated FAILED results; dead-letter deliveries; provider failover/error events; queue backlog. Some alerts require querying stored outcomes/deliveries or adding a metrics collector; no Sentry account or alert receiver is configured. No unsupported error-rate/breaker/queue-depth metric is claimed.
 

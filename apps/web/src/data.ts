@@ -6,7 +6,7 @@ export const query = new QueryClient({
 });
 export type CampaignRow = Row<Campaign & { status: string }>;
 export type ContactRow = Row<
-  Contact & { campaign_id: string; status: string; blocked_reason?: string }
+  Contact & { campaign_id: string; status: string; blocked_reason?: string; next_attempt_at?: string }
 >;
 export type ResultRow = Row<CallResult & { call_id?: string }>;
 export type CallRow = Row<{

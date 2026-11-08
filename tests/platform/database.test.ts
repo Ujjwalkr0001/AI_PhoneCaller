@@ -188,6 +188,29 @@ describe('Postgres + authenticated API', () => {
       ),
     ).toHaveLength(1);
   });
+  it('keeps a future dial job when the current singleton slot already has a job', async () => {
+    const contactId = randomUUID();
+    const future = new Date(Date.now() + 10 * 60000);
+    const ids: string[] = [];
+    try {
+      const currentId = await platform.queueContact(org, contactId);
+      if (currentId) ids.push(currentId);
+      const futureId = await platform.queueContact(org, contactId, future);
+      if (futureId) ids.push(futureId);
+      expect(ids).toHaveLength(2);
+      const rows = await store.pool.query(
+        'select singleton_key,start_after from pgboss.job where id=any($1::uuid[])',
+        [ids],
+      );
+      expect(rows.rows).toHaveLength(2);
+      expect(new Set(rows.rows.map((r) => r.singleton_key)).size).toBe(2);
+      expect(rows.rows.some((r) => new Date(r.start_after).getTime() >= future.getTime())).toBe(
+        true,
+      );
+    } finally {
+      if (ids.length) await platform.boss.deleteJob('dial', ids);
+    }
+  });
   it('full browser pipeline persists result once before submissions', async () => {
     const c = await store.put('campaigns', org, { ...defaultCampaign('hr'), status: 'draft' });
     const { call, pipeline } = await platform.browserCall(org, c.id, {

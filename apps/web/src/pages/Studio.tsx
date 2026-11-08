@@ -788,12 +788,22 @@ function StudioForm({ workflow }: { workflow: WorkflowId }) {
                   ? 'The call could not connect.'
                   : call?.data.status === 'in-progress'
                     ? 'Your conversation is underway.'
+                    : contact?.data.status === 'scheduled'
+                      ? 'Your call is scheduled.'
                     : queued
                       ? 'Your call is in the queue.'
                       : 'Ready for your first conversation.'}
               </h2>
               <p>
-                {contact?.data.blocked_reason ??
+                {contact?.data.next_attempt_at
+                  ? `Scheduled for ${new Date(contact.data.next_attempt_at).toLocaleString('en-IN', {
+                      timeZone: 'Asia/Kolkata',
+                      day: 'numeric',
+                      month: 'short',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })} IST. ${contact.data.blocked_reason ?? ''}`
+                  : contact?.data.blocked_reason ??
                   (queued
                     ? `Calls follow ${draft.start}–${draft.end} IST and your workspace calling rules. The summary appears once a call completes.`
                     : 'Place a phone call or try a browser test to see the result here.')}

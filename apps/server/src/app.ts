@@ -723,6 +723,15 @@ export async function buildApp(store: Store, platform: Platform) {
         call = stored as import('../../../packages/shared/src/index.js').Row<CallData>;
       if (call.data.sid && call.data.sid !== body.CallSid)
         return reply.code(403).send('Call SID mismatch');
+      app.log.info(
+        {
+          call_id: call.id,
+          callback: path === '/twilio/status' ? 'status' : 'voice',
+          status: path === '/twilio/status' ? body.CallStatus : undefined,
+          answered_by: path === '/twilio/voice' ? body.AnsweredBy : undefined,
+        },
+        'Signed Twilio callback received',
+      );
       if (path === '/twilio/status') {
         if (['failed', 'completed'].includes(call.data.status)) return { ok: true };
         if (['no-answer', 'busy', 'failed', 'canceled'].includes(body.CallStatus))
@@ -765,6 +774,7 @@ export async function buildApp(store: Store, platform: Platform) {
       let streamSid: string | undefined,
         pipeline: ConversationPipeline | undefined,
         sid: string | undefined,
+        callId: string | undefined,
         starting = false;
       const transport = socketTransport(
         ws,
@@ -789,8 +799,8 @@ export async function buildApp(store: Store, platform: Platform) {
           };
           if (e.event === 'start' && e.start && !starting) {
             starting = true;
-            const callId = z.string().uuid().parse(e.start.customParameters.call_id);
-            const call = (await store.pool.query('select * from calls where id=$1', [callId]))
+            const parsedCallId = z.string().uuid().parse(e.start.customParameters.call_id);
+            const call = (await store.pool.query('select * from calls where id=$1', [parsedCallId]))
               .rows[0] as import('../../../packages/shared/src/index.js').Row<CallData> | undefined;
             if (
               !call ||
@@ -804,6 +814,8 @@ export async function buildApp(store: Store, platform: Platform) {
               throw new Error('Unexpected stream identity, state or format');
             streamSid = e.start.streamSid;
             sid = e.start.callSid;
+            callId = call.id;
+            app.log.info({ call_id: call.id }, 'Signed Twilio media stream started');
             const campaign = await store.get<CampaignData>(
               'campaigns',
               call.org_id,
@@ -824,6 +836,7 @@ export async function buildApp(store: Store, platform: Platform) {
         });
       });
       ws.on('close', () => {
+        if (callId) app.log.info({ call_id: callId }, 'Twilio media stream closed');
         void pipeline
           ?.finish()
           .catch((error) => app.log.error({ err: error }, 'Failed to persist phone result'));
