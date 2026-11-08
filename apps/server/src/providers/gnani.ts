@@ -21,13 +21,16 @@ export class GnaniSttClient implements SttClient {
   ) {}
   async connect() {
     if (!this.key) throw new Error('GNANI_STT or GNANI_API_KEY is required');
+    if (!this.languageCodes[0]) throw new Error('Gnani STT language is required');
     this.closed = false;
     await new Promise<void>((resolve, reject) => {
       const ws = (this.ws = new WebSocket(this.endpoint, {
         handshakeTimeout: 10000,
         headers: {
           'x-api-key-id': this.key!,
-          language_code: this.languageCodes.join(','),
+          // This streaming endpoint accepts one language code per connection.
+          // A comma-separated campaign list causes an immediate provider error.
+          language_code: this.languageCodes[0],
           model: 'prisma-v3.0',
           format: 'codemix',
           'x-sample-rate': '8000',

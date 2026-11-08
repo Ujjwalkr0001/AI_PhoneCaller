@@ -22,7 +22,8 @@ const output = z.object({
         args: z.record(z.string(), z.unknown()),
       }),
     )
-    .max(8),
+    .max(8)
+    .default([]),
 });
 // OpenAI-compatible Chat Completions text endpoint; Gnani does not decide dialogue in this pipeline.
 export class CompatibleDialogue implements DialogueClient {

@@ -79,7 +79,14 @@ export class ConversationPipeline {
   async start() {
     this.stt.onActivity = () => this.bargeIn();
     this.stt.onTurn = (e) => {
-      void this.turn(e).catch(() => {
+      void this.turn(e).catch((error: unknown) => {
+        // A caller can interrupt TTS. Its aborted request belongs to the old
+        // turn and must not terminate the newly started conversation turn.
+        if (error instanceof Error && error.name === 'AbortError') return;
+        this.hooks.event('error', {
+          code: 'TURN_FAILED',
+          name: error instanceof Error ? error.name : 'Unknown',
+        });
         if (!this.abort.signal.aborted) return this.finish('FAILED');
       });
     };

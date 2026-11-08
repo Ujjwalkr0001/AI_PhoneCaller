@@ -42,7 +42,7 @@ it('Prisma auth/config, final events and exactly 1024-byte paced PCM against a l
     client.sendAudio(Buffer.alloc(2048));
     await new Promise((r) => setTimeout(r, 180));
     expect(headers['x-api-key-id']).toBe('synthetic-key');
-    expect(headers.language_code).toBe('en-IN,hi-IN');
+    expect(headers.language_code).toBe('en-IN');
     expect(headers['x-sample-rate']).toBe('8000');
     expect(frames.map((f) => f.length)).toEqual([1024, 1024]);
     expect(frames[1].at - frames[0].at).toBeGreaterThanOrEqual(45);

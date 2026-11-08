@@ -176,6 +176,31 @@ describe('full mock pipeline', () => {
     await utter(p, 'Yes');
     expect(clear).toHaveBeenCalled();
   });
+  it('does not fail the call when a caller interrupts synthesized speech', async () => {
+    const { p, results, events } = fixture();
+    await p.start();
+    let resolveStarted!: () => void;
+    const started = new Promise<void>((resolve) => { resolveStarted = resolve; });
+    let syntheses = 0;
+    p.tts.synthesize = async function* (_text, _language, _voice, signal) {
+      if (++syntheses === 1) {
+        resolveStarted();
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(new DOMException('Interrupted', 'AbortError')), {
+            once: true,
+          });
+        });
+      }
+      yield Buffer.alloc(160, 255);
+    };
+    const stt = p.stt as MockStt;
+    stt.utterance('Yes');
+    await started;
+    stt.utterance('I can discuss the role');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(results).toHaveLength(0);
+    expect(events.some((event) => event.type === 'error')).toBe(false);
+  });
 });
 describe('provider failover', () => {
   it('opens circuit after failures and recovers on success', () => {

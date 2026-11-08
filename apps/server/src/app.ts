@@ -751,7 +751,7 @@ export async function buildApp(store: Store, platform: Platform) {
         return { ok: true };
       }
       const xml = new twilio.twiml.VoiceResponse();
-      if (body.AnsweredBy?.startsWith('machine') || body.AnsweredBy === 'fax') {
+      if (body.AnsweredBy === 'fax') {
         xml.hangup();
         await platform.failCall(call.org_id, call, 'VOICEMAIL');
       } else {

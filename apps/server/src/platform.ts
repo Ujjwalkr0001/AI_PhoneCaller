@@ -75,7 +75,6 @@ export class TwilioProvider implements TelephonyProvider {
         statusCallback: `${base}/twilio/status?call_id=${id}`,
         statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
         statusCallbackMethod: 'POST',
-        machineDetection: 'Enable',
         timeout: 30,
       })
     ).sid;

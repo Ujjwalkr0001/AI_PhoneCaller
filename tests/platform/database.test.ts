@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import argon2 from 'argon2';
+import twilio from 'twilio';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Store, tables } from '../../apps/server/src/db/store.js';
 import { buildApp } from '../../apps/server/src/app.js';
@@ -243,6 +244,43 @@ describe('Postgres + authenticated API', () => {
           })
         ).statusCode,
       ).toBe(403);
+  });
+  it('streams a signed answered call even when machine detection labels it machine_start', async () => {
+    const oldToken = process.env.TWILIO_AUTH_TOKEN;
+    const oldBase = process.env.TWILIO_WEBHOOK_BASE_URL;
+    process.env.TWILIO_AUTH_TOKEN = 'synthetic-token';
+    process.env.TWILIO_WEBHOOK_BASE_URL = 'https://demo.example.test';
+    try {
+      const call = await store.put('calls', org, {
+        sid: 'CA-synthetic',
+        status: 'ringing',
+        contact_id: randomUUID(),
+      });
+      const path = `/twilio/voice?call_id=${call.id}`;
+      const body = { CallSid: 'CA-synthetic', AnsweredBy: 'machine_start' };
+      const signature = twilio.getExpectedTwilioSignature(
+        'synthetic-token',
+        `https://demo.example.test${path}`,
+        body,
+      );
+      const response = await app.inject({
+        method: 'POST',
+        url: path,
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          'x-twilio-signature': signature,
+        },
+        payload: new URLSearchParams(body).toString(),
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toContain('<Stream');
+      expect(response.body).not.toContain('<Hangup');
+    } finally {
+      if (oldToken === undefined) delete process.env.TWILIO_AUTH_TOKEN;
+      else process.env.TWILIO_AUTH_TOKEN = oldToken;
+      if (oldBase === undefined) delete process.env.TWILIO_WEBHOOK_BASE_URL;
+      else process.env.TWILIO_WEBHOOK_BASE_URL = oldBase;
+    }
   });
   it('delivery retries exponentially to dead letter, result remains saved', async () => {
     const d = await store.put<Destination>('destinations', org, {

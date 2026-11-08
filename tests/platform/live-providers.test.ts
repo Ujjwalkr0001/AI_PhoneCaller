@@ -11,6 +11,7 @@ import {
 } from '../../apps/server/src/provider-config.js';
 import { validTwilio } from '../../apps/server/src/security.js';
 import { analyzeCall } from '../../apps/server/src/analysis.js';
+import { CompatibleDialogue } from '../../apps/server/src/providers/dialogue.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -118,4 +119,21 @@ it('saves a grounded recruitment summary and job-related comment', async () => {
     response_format: { type: 'json_object' },
   });
   expect(JSON.parse(String(init?.body)).messages[1].content).toContain('CANDIDATE_COMPLETED');
+});
+
+it('accepts a spoken Groq response when optional tools are omitted', async () => {
+  vi.stubEnv('GROQ_API_KEY', 'synthetic-key');
+  vi.stubEnv('DIALOGUE_API_KEY', '');
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response('data: {"choices":[{"delta":{"content":"{\\"text\\":\\"Hello there\\"}"}}]}\n\n'),
+  );
+  const reply = await new CompatibleDialogue().reply(
+    defaultCampaign('hr'),
+    [],
+    'GREETING_DISCLOSURE',
+    {},
+    new AbortController().signal,
+    () => {},
+  );
+  expect(reply).toMatchObject({ text: 'Hello there', tools: [] });
 });
