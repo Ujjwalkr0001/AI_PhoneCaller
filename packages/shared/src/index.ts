@@ -208,6 +208,7 @@ export const outcomes = [
   'FAILED',
   'CANDIDATE_COMPLETED',
   'CANDIDATE_DECLINED',
+  'CANDIDATE_REQUIREMENTS_NOT_MET',
 ] as const;
 export type Outcome = (typeof outcomes)[number];
 export const stages = [

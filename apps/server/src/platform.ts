@@ -104,7 +104,7 @@ export class Platform {
     this.tts = new PhraseCache(this.simulation ? new MockTts() : new GnaniTtsClient());
   }
   emit(org: string, callId: string, type: string, data: unknown) {
-    if (['stage', 'provider', 'error', 'call_end', 'screening_question', 'latency'].includes(type))
+    if (['stage', 'provider', 'error', 'call_end', 'screening_question', 'must_have_assessment', 'latency'].includes(type))
       logger.withCallSid(callId).info(`Call ${type}`, { org_id: org, detail: data });
     for (const [ws, tenant] of this.monitors)
       if (tenant === org && ws.readyState === 1)

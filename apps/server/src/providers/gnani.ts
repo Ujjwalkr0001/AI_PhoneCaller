@@ -13,6 +13,7 @@ export class GnaniSttClient implements SttClient {
   private closed = false;
   private frames = new FrameBuffer(1024);
   private queue: Buffer[] = [];
+  private nextFrameAt = 0;
   private endAt?: number;
   constructor(
     private languageCodes: string[],
@@ -91,12 +92,24 @@ export class GnaniSttClient implements SttClient {
         }
       });
     });
-    this.timer = setInterval(() => {
-      const frame = this.queue.shift();
-      if (frame && this.ws?.readyState === WebSocket.OPEN) this.ws.send(frame);
-    }, 64);
+    this.nextFrameAt = performance.now();
+    // Pace against elapsed time: a 64 ms interval can run late on Windows and
+    // steadily accumulate audio until a healthy call hits the queue limit.
+    this.timer = setInterval(() => this.drainAudio(), 10);
+  }
+  private drainAudio() {
+    const now = performance.now();
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    let sent = 0;
+    while (this.queue.length && now >= this.nextFrameAt && sent < 4 && this.ws.bufferedAmount < 32768) {
+      this.ws.send(this.queue.shift()!);
+      this.nextFrameAt += 64;
+      sent++;
+    }
+    if (!this.queue.length) this.nextFrameAt = Math.max(this.nextFrameAt, now);
   }
   sendAudio(pcm: Buffer) {
+    if (this.closed) return;
     this.queue.push(...this.frames.push(pcm));
     if (this.queue.length > 32) {
       this.queue = [];

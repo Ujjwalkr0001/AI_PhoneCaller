@@ -22,7 +22,7 @@ import { FrameBuffer } from './audio.js';
 import { redactSensitive } from './security.js';
 import { analyzeCall } from './analysis.js';
 import { parseCallbackPhrase } from '../../../src/utils/time-parser.js';
-import { isCandidateQuestion, recruitmentQuestions, screeningAnswer, verbalConsent } from './recruitment.js';
+import { isCandidateQuestion, mustHaveAnswer, recruitmentQuestions, requirementRejection, screeningAnswer, verbalConsent } from './recruitment.js';
 import { PreparedSpeech } from './providers/prepared-speech.js';
 export interface PipelineHooks {
   event(type: string, data: unknown): void;
@@ -183,12 +183,36 @@ export class ConversationPipeline {
     this.hooks.event('stage', stage);
   }
   private hrPrompt(index: number) {
-    const question = this.campaign.screening_questions[index]?.question;
-    if (!question) return '';
-    const role = this.campaign.job_title.trim();
-    return index === 0 && role && role.toLowerCase() !== 'your role'
-      ? `Thank you. This is a brief screening for the ${role} position. ${question}`
-      : question;
+    const plan = this.campaign.screening_questions, q = plan[index];
+    if (!q) return '';
+    if (index === 0 && q.must_have)
+      return `Thank you. I'll first check the essential requirements. ${q.question}`;
+    if (index === plan.findIndex((question) => !question.must_have))
+      return `Thank you.${index ? " You've confirmed the essential requirements." : ''} ${this.hrRoleInformation()} I have a few more questions. ${q.question}`;
+    return q.question;
+  }
+  private hrRoleInformation() {
+    const c = this.campaign;
+    const summary = c.role_summary.trim() || `The position is ${c.job_title} at ${c.company_name}.`;
+    return [/[.!?]$/.test(summary) ? summary : `${summary}.`,
+      c.work_mode ? `The work arrangement is ${c.work_mode}.` : '',
+      c.location ? `The location is ${c.location}.` : '',
+      c.salary_range_text ? `The approved salary range is ${c.salary_range_text}.` : '',
+    ].filter(Boolean).join(' ');
+  }
+  private async continueRecruitment(index: number) {
+    const q = this.campaign.screening_questions[index];
+    if (q) {
+      if (!q.must_have && this.flow.stage === 'DISCOVERY_SCREENING') this.advance('PITCH_ROLE_INTRO');
+      await this.askHrQuestion(index);
+      return;
+    }
+    const introduceRole = this.flow.stage === 'DISCOVERY_SCREENING';
+    if (introduceRole) this.advance('PITCH_ROLE_INTRO');
+    this.advance('OBJECTIONS_QA');
+    this.lastQuestion = 'What questions do you have about the role?';
+    await this.say(`${introduceRole ? `Thank you. You've confirmed the essential requirements. ${this.hrRoleInformation()} ` : ''}${this.lastQuestion}`);
+    this.armIdle();
   }
   private prepareHrQuestion(index: number) {
     const text = this.hrPrompt(index);
@@ -213,42 +237,51 @@ export class ConversationPipeline {
       if (isCandidateQuestion(text)) return false;
       if (verbalConsent(text) === true) {
         this.advance('DISCOVERY_SCREENING');
-        await this.askHrQuestion(0);
+        await this.continueRecruitment(0);
       } else {
         await this.say('Is this a good time for a brief job-related screening?');
         this.armIdle();
       }
       return true;
     }
-    if (this.flow.stage === 'DISCOVERY_SCREENING') {
+    if (this.flow.stage === 'DISCOVERY_SCREENING' || this.flow.stage === 'PITCH_ROLE_INTRO') {
       if (isCandidateQuestion(text)) return false;
       const q = this.campaign.screening_questions[this.hrIndex];
-      if (!/^(yes|no)$/i.test(q.expected_answer_hint.trim()) && /^(yes|yeah|no|okay|ok|sure)[.!\s]*$/i.test(text)) {
+      let answer = q.must_have ? mustHaveAnswer(q, text) : screeningAnswer(text.slice(0, 500), q.expected_answer_hint);
+      const vague = answer === undefined || (!q.must_have && !/^(yes|no)$/i.test(q.expected_answer_hint.trim())
+        && /^(hello|hi|hey|yes|yeah|no|okay|ok|sure)[.!\s]*$/i.test(text));
+      if (vague) {
         if (!this.hrClarified.has(q.field_key)) {
           this.hrClarified.add(q.field_key);
-          await this.say(`Could you give a brief answer in your own words? ${q.question}`);
+          await this.say(`${q.must_have ? 'Please confirm with yes or no, or tell me how much relevant experience you have.' : 'Could you give a brief answer in your own words?'} ${q.question}`);
           this.armIdle();
           return true;
         }
-        text = 'unknown';
+        answer = 'unknown';
       }
       const result = await this.tool({ name: 'capture_fields', args: {
-        fields: { [q.field_key]: screeningAnswer(text.slice(0, 500), q.expected_answer_hint) },
+        fields: { [q.field_key]: answer },
       } }, text);
       if (result && typeof result === 'object' && 'error' in result) {
         await this.say(`Please keep your answer focused on the role. ${q.question}`);
         this.armIdle();
         return true;
       }
-      if (this.hrIndex + 1 < this.campaign.screening_questions.length) {
-        await this.askHrQuestion(this.hrIndex + 1);
-      } else {
-        this.advance('PITCH_ROLE_INTRO');
-        this.advance('OBJECTIONS_QA');
-        this.lastQuestion = 'What questions do you have about the role?';
-        await this.say(`${this.campaign.role_summary.trim()} ${this.lastQuestion}`.trim());
-        this.armIdle();
+      if (q.must_have) {
+        this.hooks.event('must_have_assessment', { field_key: q.field_key,
+          status: answer === 'unknown' ? 'unconfirmed' : answer?.toLowerCase() === q.expected_answer_hint.trim().toLowerCase() ? 'met' : 'not_met' });
+        if (answer === 'unknown') {
+          await this.say("We couldn't confirm this essential requirement, so I'll leave the screening here for the team to review. Thank you for your time. Goodbye.");
+          await this.finish('INCOMPLETE', 'must_have_unconfirmed');
+          return true;
+        }
+        if (answer?.toLowerCase() !== q.expected_answer_hint.trim().toLowerCase()) {
+          await this.say(requirementRejection(q));
+          await this.finish('CANDIDATE_REQUIREMENTS_NOT_MET', 'must_have_not_met');
+          return true;
+        }
       }
+      await this.continueRecruitment(this.hrIndex + 1);
       return true;
     }
     if (this.flow.stage === 'OBJECTIONS_QA') {
@@ -424,7 +457,7 @@ export class ConversationPipeline {
         || 'The team will follow up with that information.';
       spoken = safeReply(this.campaign, spoken);
       if (/may (?:the )?team follow up/i.test(spoken)) spoken = 'The team will follow up with that information.';
-      if (this.flow.stage === 'DISCOVERY_SCREENING') spoken += ` ${this.lastQuestion}`;
+      if (this.flow.stage === 'DISCOVERY_SCREENING' || this.flow.stage === 'PITCH_ROLE_INTRO') spoken += ` ${this.lastQuestion}`;
       else if (this.flow.stage === 'PERMISSION') spoken += ' Is this a good time for a brief screening?';
       else if (this.flow.stage === 'OBJECTIONS_QA') spoken += ' What other questions do you have about the role?';
     } else if (/may (?:the )?team follow up with you/i.test(spoken) && this.flow.stage !== 'CLOSE') {

@@ -78,6 +78,8 @@ export class CallFlow {
 }
 export function opening(c: Campaign, firstName = '') {
   const name = firstName ? ` ${firstName.replace(/[{}<>]/g, '')}` : '';
+  if (c.type === 'hr' && c.languages[0] === 'en-IN')
+    return `Hey${name}, you applied to ${c.company_name} for the ${c.job_title} position. I'm ${c.agent_persona.name}, an AI assistant calling on behalf of ${c.company_name}. Is this a good time for a brief recruitment screening?`;
   if (c.languages[0] === 'hi-IN')
     return `नमस्ते${name}, मैं ${c.agent_persona.name}, ${c.company_name} की ओर से एक AI सहायक हूँ। क्या अभी बात करने का सही समय है?`;
   if (c.languages[0] === 'te-IN')
@@ -199,8 +201,10 @@ export function eligibility(c: Campaign, fields: Record<string, unknown>) {
     } else reasons.push(`${q.field_key}: matches explicit criterion`);
   }
   const value =
-    !must.length || unclear
+    !must.length || (unclear && !failed)
       ? 'UNCLEAR'
+      : failed && unclear
+        ? 'DOES_NOT_MEET'
       : failed === 0
         ? 'MEETS_ALL_MUST_HAVES'
         : failed === must.length

@@ -427,7 +427,7 @@ function StudioForm({ workflow }: { workflow: WorkflowId }) {
                 {hr && (
                   <Field
                     label="Must-have requirements"
-                    hint="Add a job-related requirement and press Enter. Each is assessed against an explicit yes answer."
+                    hint="Checked first, one at a time. A confirmed mismatch ends the screening politely."
                   >
                     <TagInput
                       value={draft.requirements}
@@ -718,6 +718,7 @@ function StudioForm({ workflow }: { workflow: WorkflowId }) {
                 <Clock3 size={16} />
                 {draft.start}–{draft.end} IST
               </div>
+              {hr && <p className="helper">Introduction → must-have requirements → role details → your selected questions → candidate questions → next steps.</p>}
               <Button kind="ghost" onClick={() => setStep(0)}>
                 Edit agent <ArrowUpRight size={15} />
               </Button>

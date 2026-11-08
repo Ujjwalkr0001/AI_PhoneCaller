@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { defaultCampaign, type CallResult } from '../../packages/shared/src/index.js';
+import { defaultCampaign, type CallResult, type Campaign } from '../../packages/shared/src/index.js';
+import { expandToFullConfig, newMinimalDraft } from '../../packages/shared/src/minimal.js';
 import { ConversationPipeline } from '../../apps/server/src/pipeline.js';
 import { MockDialogue, MockStt, MockTts } from '../../apps/server/src/providers/mocks.js';
 import { CircuitBreaker, ResilientTts } from '../../apps/server/src/providers/resilience.js';
@@ -9,7 +10,7 @@ afterEach(async () => {
   for (const p of live.splice(0)) await p.finish();
   vi.restoreAllMocks();
 });
-function fixture(type: 'sales' | 'hr' = 'sales') {
+function fixture(type: 'sales' | 'hr' = 'sales', configure?: (c: Campaign) => void, firstName = '') {
   const c = defaultCampaign(type);
   c.languages = ['en-IN', 'hi-IN'];
   c.voice['hi-IN'] = 'Shivani';
@@ -22,6 +23,7 @@ function fixture(type: 'sales' | 'hr' = 'sales') {
       expected_answer_hint: 'yes',
     },
   ];
+  configure?.(c);
   const results: CallResult[] = [],
     events: { type: string; data: unknown }[] = [],
     suppressed = vi.fn(async () => {}),
@@ -42,6 +44,7 @@ function fixture(type: 'sales' | 'hr' = 'sales') {
       },
     },
     true,
+    firstName,
   );
   live.push(p);
   return { p, results, events, suppressed, clear };
@@ -99,17 +102,76 @@ describe('full mock pipeline', () => {
     await p.start();
     for (const text of ['Yes', answer, 'Tell me more', 'No questions', 'Yes, I agree'])
       await utter(p, text);
-    expect(results[0].outcome).toBe('CANDIDATE_COMPLETED');
+    expect(results[0].outcome).toBe(answer === 'yes' ? 'CANDIDATE_COMPLETED' : 'CANDIDATE_REQUIREMENTS_NOT_MET');
     expect(results[0].eligibility?.value).toBe(
       answer === 'yes' ? 'MEETS_ALL_MUST_HAVES' : 'DOES_NOT_MEET',
     );
-    expect(results[0].follow_up_eligible).toBe(true);
+    expect(results[0].follow_up_eligible).toBe(answer === 'yes');
   });
   it('HR declined is saved for advisory review', async () => {
     const { p, results } = fixture('hr');
     await p.start();
     await utter(p, 'Not interested');
     expect(results[0].outcome).toBe('CANDIDATE_DECLINED');
+  });
+  it('runs the full frontend recruitment form with requirements before role details and every selected question', async () => {
+    const { p, results, events } = fixture('hr', (c) => Object.assign(c, expandToFullConfig({
+      ...newMinimalDraft('hr'), company_name: 'Elevate Box', job_title: 'Backend Engineer',
+      requirements: ['3+years of expereince in API', 'AWS'],
+      screening: ['notice_period', 'expected_salary', 'current_location', 'interview_availability', 'relevant_experience'],
+    }, { advanced: { role_summary: 'Build and maintain our deployment systems.' } })), 'Ujjwal');
+    const dialogue = vi.spyOn(p.dialogue, 'reply');
+    await p.start();
+    expect(p.transcript[0].text).toContain('Hey Ujjwal, you applied to Elevate Box for the Backend Engineer position.');
+    await utter(p, 'Yes');
+    expect(p.transcript.at(-1)?.text).toContain('at least 3 years');
+    await utter(p, 'I have four years of experience.');
+    expect(p.transcript.at(-1)?.text).toContain('professional experience with AWS');
+    expect(p.transcript.some((t) => t.text.includes('deployment systems'))).toBe(false);
+    await utter(p, 'Yes, I have used AWS.');
+    expect(p.flow.stage).toBe('PITCH_ROLE_INTRO');
+    expect(p.transcript.at(-1)?.text).toContain('Build and maintain our deployment systems.');
+    expect(p.transcript.at(-1)?.text).toContain('What relevant experience would you like to share?');
+    for (const text of ['I built API services and deployment tools.', 'Seventy thousand rupees per month.',
+      'Kolkata.', 'Thirty days.', 'Monday afternoon.']) await utter(p, text);
+    expect(p.flow.stage).toBe('OBJECTIONS_QA');
+    await utter(p, 'No questions');
+    await utter(p, 'Yes, I agree');
+    expect(results[0]).toMatchObject({outcome: 'CANDIDATE_COMPLETED', extracted_fields: {
+      requirement_1: 'yes', requirement_2: 'yes', expected_salary: 'Seventy thousand rupees per month.',
+      current_location: 'Kolkata.', notice_period: 'Thirty days.', interview_availability: 'Monday afternoon.',
+    }});
+    expect(events.filter((e) => e.type === 'screening_question').map((e) => e.data)).toMatchObject([
+      {field_key: 'requirement_1'}, {field_key: 'requirement_2'}, {field_key: 'relevant_experience'},
+      {field_key: 'expected_salary'}, {field_key: 'current_location'}, {field_key: 'notice_period'},
+      {field_key: 'interview_availability'},
+    ]);
+    expect(dialogue).not.toHaveBeenCalled();
+  });
+  it('clarifies unrelated answers then closes with the actual unmet experience requirement', async () => {
+    const { p, results } = fixture('hr', (c) => Object.assign(c, expandToFullConfig({
+      ...newMinimalDraft('hr'), company_name: 'Elevate Box', job_title: 'Backend Engineer',
+      requirements: ['3+years of expereince in API', 'AWS'],
+    }, {advanced: {role_summary: 'Build deployment tools.'}})));
+    await p.start();
+    await utter(p, 'Yes');
+    await utter(p, 'I am a backend developer.');
+    expect(p.fields.requirement_1).toBeUndefined();
+    expect(p.transcript.at(-1)?.text).toContain('Please confirm with yes or no');
+    await utter(p, 'I have two years of experience.');
+    expect(results[0]).toMatchObject({outcome: 'CANDIDATE_REQUIREMENTS_NOT_MET',
+      end_reason: 'must_have_not_met', follow_up_eligible: false, extracted_fields: {requirement_1: 'no'},
+      eligibility: {value: 'DOES_NOT_MEET'}});
+    expect(p.transcript.at(-1)?.text).toContain("I'm really sorry, but this role requires at least 3 years");
+    expect(p.transcript.some((t) => /deployment tools|salary expectations|notice period/.test(t.text))).toBe(false);
+    expect(p.fields.requirement_2).toBeUndefined();
+  });
+  it('leaves unconfirmed must-haves incomplete without treating them as a mismatch', async () => {
+    const {p, results} = fixture('hr');
+    await p.start(); await utter(p, 'Yes');
+    await utter(p, 'Hello'); await utter(p, 'I am a developer');
+    expect(results[0]).toMatchObject({outcome: 'INCOMPLETE', end_reason: 'must_have_unconfirmed',
+      eligibility: {value: 'UNCLEAR'}, follow_up_eligible: false});
   });
   it('finishes every configured screening question in order without LLM calls for answers', async () => {
     const { p, events, results } = fixture('hr');
@@ -120,9 +182,9 @@ describe('full mock pipeline', () => {
     const dialogue = vi.spyOn(p.dialogue, 'reply');
     await p.start();
     await utter(p, 'Yes, please.');
-    await utter(p, 'No, I have not used TypeScript.');
-    expect(p.fields.typescript).toBe('no');
-    expect(p.transcript.at(-1)?.text).toBe('When could you start?');
+    await utter(p, 'Yes, I can use TypeScript.');
+    expect(p.fields.typescript).toBe('yes');
+    expect(p.transcript.at(-1)?.text).toContain('When could you start?');
     await utter(p, 'Please repeat the question.');
     expect(p.fields.notice_period).toBeUndefined();
     await utter(p, 'In thirty days.');
@@ -132,7 +194,7 @@ describe('full mock pipeline', () => {
     await utter(p, 'Yes, the team can follow up.');
     expect(results[0].outcome).toBe('CANDIDATE_COMPLETED');
     expect(results[0].extracted_fields).toMatchObject({
-      typescript: 'no', notice_period: 'In thirty days.', consent_to_follow_up: true,
+      typescript: 'yes', notice_period: 'In thirty days.', consent_to_follow_up: true,
     });
     expect(dialogue).not.toHaveBeenCalled();
     expect(events.filter((e) => e.type === 'screening_question').map((e) => e.data)).toMatchObject([
@@ -154,7 +216,7 @@ describe('full mock pipeline', () => {
     expect(p.transcript.at(-1)?.text).toContain('Can you use TypeScript?');
     await utter(p, 'I prefer not to answer.');
     expect(p.fields.typescript).toBe('unknown');
-    expect(p.flow.stage).toBe('OBJECTIONS_QA');
+    expect(p.transcript.at(-1)?.text).toContain("couldn't confirm");
   });
   it('captures technical experience without mistaking domain words for handoff or callback requests', async () => {
     const { p } = fixture('hr');

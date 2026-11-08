@@ -10,6 +10,8 @@ let sampleContext: AudioContext | undefined;
 let playing: AudioBufferSourceNode | undefined;
 export function previewOpening(d: CampaignDraftMinimal, name = 'Mira') {
   const company = d.company_name.trim() || 'your company';
+  if (d.type === 'hr' && d.languages[0] === 'en-IN')
+    return `Hey, you applied to ${company} for the ${d.job_title.trim() || 'job'} position. I'm ${name}, an AI assistant calling on behalf of ${company}. Is this a good time for a brief recruitment screening?`;
   if (d.languages[0] === 'hi-IN')
     return `नमस्ते, मैं ${name}, ${company} की ओर से एक AI सहायक हूँ। क्या अभी बात करने का सही समय है?`;
   return `Hello, I’m ${name}, an AI assistant calling on behalf of ${company}. Is this a good time?`;

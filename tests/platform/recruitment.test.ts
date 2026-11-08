@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { defaultCampaign, questionSchema } from '../../packages/shared/src/index.js';
-import { recruitmentQuestions, screeningAnswer } from '../../apps/server/src/recruitment.js';
+import { mustHaveAnswer, recruitmentQuestions, requirementRejection, screeningAnswer } from '../../apps/server/src/recruitment.js';
 
 it('orders role questions, preserves field keys, and omits unrelated personal questions', () => {
   const c = defaultCampaign('hr');
@@ -17,10 +17,26 @@ it('orders role questions, preserves field keys, and omits unrelated personal qu
   ];
   const plan = recruitmentQuestions(c);
   expect(plan.map((x) => x.field_key)).toEqual([
-    'relevant_experience', 'requirement_1', 'expected_salary', 'notice_period', 'interview_availability',
+    'requirement_1', 'relevant_experience', 'expected_salary', 'notice_period', 'interview_availability',
   ]);
-  expect(plan[1].question).toBe('Do you have at least 2 years of professional experience with React?');
+  expect(plan[0].question).toBe('Do you have at least 2 years of professional experience with React?');
   expect(questionSchema.safeParse(c.screening_questions[4]).success).toBe(false);
   expect(screeningAnswer('Yes, I have used it professionally.', 'yes')).toBe('yes');
   expect(screeningAnswer('I prefer not to answer.', '')).toBe('unknown');
+});
+
+it('understands the actual saved experience requirement and declines only definite mismatches', () => {
+  const c = defaultCampaign('hr');
+  c.screening_questions = [{question: 'Do you meet this requirement: Must have 3+years of expereince in api?',
+    field_key: 'requirement_1', required: true, must_have: true, expected_answer_hint: 'yes'}];
+  const q = recruitmentQuestions(c)[0];
+  expect(q.question).toBe('Do you have at least 3 years of professional experience with api?');
+  expect(mustHaveAnswer(q, 'I have two years of experience.')).toBe('no');
+  expect(mustHaveAnswer(q, 'I have three years of experience.')).toBe('yes');
+  expect(mustHaveAnswer(q, 'I have 48 months of experience.')).toBe('yes');
+  expect(mustHaveAnswer(q, 'I am a backend developer.')).toBeUndefined();
+  expect(mustHaveAnswer(q, 'I have around 3 years.')).toBeUndefined();
+  expect(mustHaveAnswer(q, 'I have 2 years with API and 5 years overall.')).toBeUndefined();
+  expect(mustHaveAnswer(q, "I don't know.")).toBe('unknown');
+  expect(requirementRejection(q)).toContain('at least 3 years of professional experience with api');
 });

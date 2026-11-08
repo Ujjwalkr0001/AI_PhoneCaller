@@ -38,6 +38,7 @@ export const outcomeNames: Record<string, string> = {
   FAILED: 'Failed',
   CANDIDATE_COMPLETED: 'Screened',
   CANDIDATE_DECLINED: 'Declined',
+  CANDIDATE_REQUIREMENTS_NOT_MET: 'Requirements not met',
 };
 export const stageNames: Record<string, string> = {
   GREETING_DISCLOSURE: 'Introduction',

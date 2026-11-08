@@ -82,6 +82,44 @@ it('Timbre uses documented SSE endpoint/auth/model/voice/μ-law container', asyn
   });
   expect(Buffer.concat(chunks)).toEqual(Buffer.from([255, 255]));
 });
+it('catches up late audio timer ticks without accumulating a fatal queue', async () => {
+  const server = new WebSocketServer({port: 0});
+  await once(server, 'listening');
+  const address = server.address();
+  if (!address || typeof address !== 'object') throw new Error('No test socket');
+  let received = 0, now = 0;
+  server.on('connection', (ws) => {
+    ws.send(JSON.stringify({type: 'connected'}));
+    ws.on('message', () => { received++; });
+  });
+  vi.spyOn(performance, 'now').mockImplementation(() => now);
+  const interval = vi.spyOn(globalThis, 'setInterval');
+  const client = new GnaniSttClient(['en-IN'], 'late-ticks', 'synthetic', `ws://localhost:${address.port}`);
+  const error = vi.fn(); client.onError = error;
+  try {
+    await client.connect();
+    const [pump] = interval.mock.calls.at(-1)!;
+    clearInterval(interval.mock.results.at(-1)!.value);
+    let inputFrames = 0;
+    // 80 ms callbacks model a late 64 ms timer on Windows. Audio still arrives
+    // at one frame per 64 ms, so one-frame-per-tick would overflow after 10 s.
+    for (let i = 1; i <= 240; i++) {
+      now = i * 80;
+      const due = Math.floor(now / 64);
+      client.sendAudio(Buffer.alloc((due - inputFrames) * 1024));
+      inputFrames = due;
+      pump();
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(error).not.toHaveBeenCalled();
+    expect(received).toBe(300);
+  } finally {
+    client.close();
+    for (const ws of server.clients) ws.terminate();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
 it('Timbre rejects truncated responses instead of pretending completion', async () => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response('event: chunk\ndata: {"audio":"//8="}\n\n'),
