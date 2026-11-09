@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: elevatebox-campaign-studio
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: node deploy/render/start.mjs
+    healthCheckPath: /readyz
+    maxShutdownDelaySeconds: 45
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: PUBLIC_BASE_URL
+        fromService:
+          name: elevatebox-campaign-studio
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: WEBHOOK_SIGNING_SECRET
+        generateValue: true
+      - key: SEED_ADMIN_EMAIL
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: MOCK_MODE
+        value: "true"
+      - key: ALLOW_DEPLOYED_SIMULATION
+        value: "true"

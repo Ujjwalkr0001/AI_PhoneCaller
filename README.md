@@ -1,5 +1,9 @@
 # ElevateBox Campaign Studio
 
+For a free public simulation demo, use the [Render deployment guide](deploy/render/README.md)
+and the root `render.yaml` Blueprint. The repository already follows an
+`apps/` + `packages/` monorepo layout; deploy it from this Git root.
+
 **New frontend (8 November):** a light public landing page, five-workflow workspace, recruitment question builder, phone-call panel and requirements-coverage results. Open http://localhost:3000, then choose **Sign in**. See [frontend refresh](docs/FRONTEND_REFRESH.md) and [current screenshots](docs/screens-refresh/README.md). For local real calls, use the private `.env` Gnani STT/TTS, Groq and Twilio keys, set `MOCK_MODE=false`, and provide `TWILIO_WEBHOOK_BASE_URL` as an internet-reachable HTTPS origin that forwards voice, status and WebSocket media to the server. `PUBLIC_BASE_URL` remains the dashboard origin. Follow the [live calling guide](docs/LIVE_CALLING.md).
 
 Configure sales and HR calling campaigns with Gnani Prisma speech recognition, Gnani Timbre voice, and a separately configured dialogue LLM. The persistent server serves the React app, browser audio, Twilio Media Streams, authenticated APIs and a Postgres-backed queue.
